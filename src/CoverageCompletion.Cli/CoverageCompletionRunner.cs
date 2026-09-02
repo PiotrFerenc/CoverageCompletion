@@ -18,7 +18,8 @@ public sealed class CoverageCompletionRunner(
     IGitCommitter committer,
     ISummaryReporter reporter,
     ITestGenerator testGenerator,
-    RunnerOptions? options = null)
+    RunnerOptions? options = null,
+    ITestProjectPackageEnsurer? packageEnsurer = null)
 {
     private readonly RunnerOptions _options = options ?? new RunnerOptions();
 
@@ -97,6 +98,11 @@ public sealed class CoverageCompletionRunner(
     private async Task ProcessGapAsync(CoverageGap gap, WorktreeSession session, string worktreeSolutionPath, CancellationToken ct)
     {
         var generated = await testGenerator.GenerateAsync(gap, worktreeSolutionPath, ct);
+
+        if (packageEnsurer is not null)
+        {
+            await packageEnsurer.EnsureRequiredPackagesAsync(generated.FilePath, ct);
+        }
 
         for (var attempt = 1; attempt <= _options.MaxAttempts; attempt++)
         {

@@ -134,6 +134,31 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task PackageEnsurer_WhenProvided_IsCalledOncePerGapWithGeneratedFilePathBeforeFirstBuild()
+    {
+        var gap = Gap("Widget");
+        var worktreeManager = new FakeWorktreeManager(_session);
+        var committer = new FakeGitCommitter();
+        var reporter = new FakeSummaryReporter();
+        var testGenerator = new FakeTestGenerator(FilePathFor);
+        var order = new List<string>();
+        var packageEnsurer = new FakeTestProjectPackageEnsurer(_ => order.Add("ensure"));
+        var buildRunner = new FakeBuildTestRunner(
+            [() => { order.Add("build"); return new BuildTestResult(true, "ok"); }],
+            [() => { order.Add("test"); return new BuildTestResult(true, "ok"); }]);
+
+        var runner = new CoverageCompletionRunner(
+            worktreeManager, new FakeCoverageAnalyzer([gap]), buildRunner, committer, reporter, testGenerator,
+            packageEnsurer: packageEnsurer);
+
+        var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
+
+        exitCode.Should().Be(0);
+        packageEnsurer.EnsuredFilePaths.Should().ContainSingle().Which.Should().Be(FilePathFor(gap));
+        order.Should().Equal("ensure", "build", "test");
+    }
+
+    [Fact]
     public async Task Cancellation_MidLoop_StopsProcessingButStillWritesSummaryAndRemovesWorktree()
     {
         var succeeding = Gap("Widget");
