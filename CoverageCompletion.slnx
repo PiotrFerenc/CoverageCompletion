@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CoverageCompletion.Cli/CoverageCompletion.Cli.csproj" />
+    <Project Path="src/CoverageCompletion.Contracts/CoverageCompletion.Contracts.csproj" />
+    <Project Path="src/CoverageCompletion.Generation/CoverageCompletion.Generation.csproj" />
+    <Project Path="src/CoverageCompletion.Infrastructure/CoverageCompletion.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CoverageCompletion.Generation.Tests/CoverageCompletion.Generation.Tests.csproj" />
+    <Project Path="tests/CoverageCompletion.Infrastructure.Tests/CoverageCompletion.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

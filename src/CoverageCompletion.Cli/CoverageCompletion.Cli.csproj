@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\CoverageCompletion.Contracts\CoverageCompletion.Contracts.csproj" />
+    <ProjectReference Include="..\CoverageCompletion.Infrastructure\CoverageCompletion.Infrastructure.csproj" />
+    <ProjectReference Include="..\CoverageCompletion.Generation\CoverageCompletion.Generation.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
