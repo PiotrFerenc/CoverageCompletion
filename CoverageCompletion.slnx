@@ -6,6 +6,7 @@
     <Project Path="src/CoverageCompletion.Infrastructure/CoverageCompletion.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/CoverageCompletion.EndToEnd.Tests/CoverageCompletion.EndToEnd.Tests.csproj" />
     <Project Path="tests/CoverageCompletion.Generation.Tests/CoverageCompletion.Generation.Tests.csproj" />
     <Project Path="tests/CoverageCompletion.Infrastructure.Tests/CoverageCompletion.Infrastructure.Tests.csproj" />
   </Folder>
