@@ -24,7 +24,20 @@ public sealed class CoverageCompletionRunner(
 
     public async Task<int> RunAsync(string repoPath, string solutionPath, CancellationToken ct)
     {
-        var session = await worktreeManager.CreateAsync(repoPath, ct);
+        WorktreeSession session;
+        try
+        {
+            session = await worktreeManager.CreateAsync(repoPath, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // ponytail: nothing to clean up here, no worktree/session exists yet, so no
+            // finally-block work applies. Just exit cleanly instead of letting an
+            // unhandled OperationCanceledException crash the process.
+            Console.WriteLine("Cancelled before the worktree was created.");
+            return 130;
+        }
+
         Console.WriteLine($"Worktree ready: {session.WorktreePath} (branch {session.BranchName})");
 
         var solutionRelativePath = Path.GetRelativePath(repoPath, solutionPath);
