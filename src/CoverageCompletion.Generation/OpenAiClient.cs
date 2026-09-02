@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -13,11 +14,26 @@ public class OpenAiClient
     private const string DefaultModel = "gpt-4.1";
     private const string Endpoint = "https://api.openai.com/v1/chat/completions";
 
+    // Simple exponential backoff for transient failures (429 / 5xx / network timeouts).
+    // 3 retries after the initial attempt = 4 attempts total.
+    private static readonly TimeSpan[] DefaultRetryDelays =
+    {
+        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4),
+    };
+
     private readonly HttpClient _httpClient;
+    private readonly TimeSpan[] _retryDelays;
 
     public OpenAiClient(HttpClient httpClient)
+        : this(httpClient, DefaultRetryDelays)
+    {
+    }
+
+    // Lets callers (tests, in particular) use short delays instead of waiting on real backoff timers.
+    public OpenAiClient(HttpClient httpClient, TimeSpan[] retryDelays)
     {
         _httpClient = httpClient;
+        _retryDelays = retryDelays;
     }
 
     public async Task<string> CompleteAsync(string prompt, CancellationToken ct)
@@ -40,26 +56,69 @@ public class OpenAiClient
             model,
             messages = new[] { new { role = "user", content = prompt } },
         };
+        var requestJson = JsonSerializer.Serialize(requestBody);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+        var maxAttempts = _retryDelays.Length + 1;
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"),
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            if (attempt > 1)
+            {
+                await Task.Delay(_retryDelays[attempt - 2], ct);
+            }
 
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+            using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+            {
+                Content = new StringContent(requestJson, Encoding.UTF8, "application/json"),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        var responseJson = await response.Content.ReadAsStringAsync(ct);
-        using var document = JsonDocument.Parse(responseJson);
-        var content = document.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? string.Empty;
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.SendAsync(request, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or TaskCanceledException)
+            {
+                // Network-level failure (connection reset, DNS blip, request timeout) - treat as transient.
+                lastError = ex;
+                continue;
+            }
 
-        return ExtractCodeBlock(content);
+            using (response)
+            {
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseJson = await response.Content.ReadAsStringAsync(ct);
+                    using var document = JsonDocument.Parse(responseJson);
+                    var content = document.RootElement
+                        .GetProperty("choices")[0]
+                        .GetProperty("message")
+                        .GetProperty("content")
+                        .GetString() ?? string.Empty;
+
+                    return ExtractCodeBlock(content);
+                }
+
+                if (!IsTransientStatusCode(response.StatusCode))
+                {
+                    // Non-transient (401/403/400/etc.) - config/key problem, retrying won't help.
+                    response.EnsureSuccessStatusCode();
+                }
+
+                lastError = new HttpRequestException(
+                    $"OpenAI API returned transient status {(int)response.StatusCode} ({response.StatusCode}).");
+            }
+        }
+
+        throw new HttpRequestException(
+            $"OpenAI API call failed after {maxAttempts} attempts due to transient errors. Last error: {lastError?.Message}",
+            lastError);
     }
+
+    private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
+        statusCode == HttpStatusCode.TooManyRequests || (int)statusCode >= 500;
 
     private static string ExtractCodeBlock(string content)
     {
