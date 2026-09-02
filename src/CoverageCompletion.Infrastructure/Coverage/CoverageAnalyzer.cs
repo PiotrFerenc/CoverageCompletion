@@ -47,7 +47,11 @@ public sealed class CoverageAnalyzer : ICoverageAnalyzer
 
     private static string FindNearestCsproj(string filePath, string fallbackDir)
     {
-        var dir = Path.GetDirectoryName(Path.GetFullPath(filePath));
+        // Cobertura's filename attribute is relative to the directory `dotnet test` ran in
+        // (solutionDir here, passed in as fallbackDir), NOT to this process's own working
+        // directory - Path.GetFullPath(filePath) alone resolves against Environment.CurrentDirectory,
+        // which silently breaks whenever the calling process's cwd differs from solutionDir.
+        var dir = Path.GetDirectoryName(Path.GetFullPath(filePath, fallbackDir));
         while (dir is not null)
         {
             var csproj = Directory.GetFiles(dir, "*.csproj").FirstOrDefault();

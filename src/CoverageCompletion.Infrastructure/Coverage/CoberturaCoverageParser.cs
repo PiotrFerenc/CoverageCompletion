@@ -15,10 +15,17 @@ public static class CoberturaCoverageParser
         var document = XDocument.Parse(coberturaXml);
         var gaps = new List<CoverageGap>();
 
+        // Per the Cobertura format, <class filename="..."> is relative to the <source> root(s)
+        // declared once near the top of the document - coverlet emits "/" as that root on Linux,
+        // which makes filename look like an absolute path with the leading slash stripped off.
+        // Resolve it here so callers get a real, directly-usable path instead of a bare fragment.
+        var sourceRoot = document.Root?.Element("sources")?.Element("source")?.Value.Trim();
+
         foreach (var classElement in document.Descendants("class"))
         {
             var className = (string?)classElement.Attribute("name") ?? string.Empty;
-            var filename = (string?)classElement.Attribute("filename") ?? string.Empty;
+            var rawFilename = (string?)classElement.Attribute("filename") ?? string.Empty;
+            var filename = ResolveFilename(rawFilename, sourceRoot);
             var (ns, typeName) = SplitClassName(className);
 
             // Cobertura's default project path guess: the directory the source file lives in.
@@ -67,6 +74,11 @@ public static class CoberturaCoverageParser
             .Select(number => number!.Value)
             .ToList();
     }
+
+    private static string ResolveFilename(string filename, string? sourceRoot)
+        => string.IsNullOrEmpty(sourceRoot) || Path.IsPathRooted(filename)
+            ? filename
+            : Path.Combine(sourceRoot, filename);
 
     private static (string Namespace, string TypeName) SplitClassName(string className)
     {
