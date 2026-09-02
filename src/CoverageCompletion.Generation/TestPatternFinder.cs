@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CoverageCompletion.Contracts;
 
 namespace CoverageCompletion.Generation;
@@ -11,10 +12,17 @@ public class TestPatternFinder
     private static readonly string[] TestDirSuffixes = { ".Tests", ".UnitTests", ".IntegrationTests" };
     private static readonly string[] TestPackageIds = { "xunit", "nunit", "mstest" };
 
+    // Matches an identifier ending in "Handler" (e.g. OrderHandler, IRequestHandler) as a whole
+    // token, not just the substring "Handler" appearing anywhere (e.g. inside "HandlerTests").
+    private static readonly Regex HandlerIdentifierPattern = new(@"\b\w*Handler\b", RegexOptions.Compiled);
+
     /// <summary>
     /// Finds an example test file's content for the given coverage gap, or null if none found.
     /// Strategy 1: naming convention {TypeName}Tests.cs / {TypeName}Test.cs.
-    /// Strategy 2 (fallback): first test file that looks like a handler test using Result-style assertions.
+    /// Strategy 2 (fallback): first test file where ALL of the following co-occur:
+    ///   (a) an xUnit test signal ([Fact] or [Theory]),
+    ///   (b) a Result-style assertion signal (.IsSuccess, .IsFailed, or FluentResults), and
+    ///   (c) a Mediator handler signal (an identifier ending in "Handler").
     /// </summary>
     public string? FindExampleTest(CoverageGap gap, string solutionPath)
     {
@@ -42,11 +50,12 @@ public class TestPatternFinder
             foreach (var file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
             {
                 var content = File.ReadAllText(file);
-                var looksLikeHandlerTest = content.Contains("IRequestHandler") || content.Contains("Handler");
-                var looksLikeResultAssertion = content.Contains("Result") &&
-                    (content.Contains(".IsSuccess") || content.Contains(".IsFailed"));
+                var hasXunitTestSignal = content.Contains("[Fact]") || content.Contains("[Theory]");
+                var hasResultAssertionSignal = content.Contains(".IsSuccess") || content.Contains(".IsFailed") ||
+                    content.Contains("FluentResults");
+                var hasHandlerSignal = HandlerIdentifierPattern.IsMatch(content);
 
-                if (looksLikeHandlerTest && looksLikeResultAssertion)
+                if (hasXunitTestSignal && hasResultAssertionSignal && hasHandlerSignal)
                 {
                     return content;
                 }

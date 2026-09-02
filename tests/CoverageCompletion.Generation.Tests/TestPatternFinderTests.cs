@@ -57,13 +57,93 @@ public class TestPatternFinderTests : IDisposable
     {
         var testDir = CreateTestProject("Foo.Tests");
         File.WriteAllText(Path.Combine(testDir, "Unrelated.cs"), "public class Unrelated { }");
-        var fallbackContent =
-            "public class SomeOtherHandlerTests { void Test() { Result<int> result = handler.Handle(); result.IsSuccess.Should().BeTrue(); } }";
-        File.WriteAllText(Path.Combine(testDir, "SomeOtherHandlerTests.cs"), fallbackContent);
+        var fallbackContent = """
+            public class SomeOtherTests
+            {
+                [Fact]
+                public void Handle_ReturnsSuccess()
+                {
+                    var sut = new OrderHandler();
+                    Result<int> result = sut.Handle();
+                    result.IsSuccess.Should().BeTrue();
+                }
+            }
+            """;
+        File.WriteAllText(Path.Combine(testDir, "SomeOtherTests.cs"), fallbackContent);
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
         result.Should().Be(fallbackContent);
+    }
+
+    [Fact]
+    public void FindExampleTest_HandlerWordAloneWithoutFactOrResultAssertion_DoesNotMatch()
+    {
+        var testDir = CreateTestProject("Foo.Tests");
+        // Mentions "Handler" and even an IRequestHandler-shaped identifier, but has neither
+        // a [Fact]/[Theory] nor a Result-style assertion - should not be picked as a fallback.
+        var content = """
+            public class HandlerUtility
+            {
+                // The Handler processes things.
+                public void DoSomething(IRequestHandler handler)
+                {
+                    handler.Process();
+                }
+            }
+            """;
+        File.WriteAllText(Path.Combine(testDir, "HandlerUtility.cs"), content);
+
+        var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void FindExampleTest_MissingResultAssertion_DoesNotMatch()
+    {
+        var testDir = CreateTestProject("Foo.Tests");
+        var content = """
+            public class SomeOtherTests
+            {
+                [Fact]
+                public void Handle_DoesSomething()
+                {
+                    var sut = new OrderHandler();
+                    sut.Handle();
+                }
+            }
+            """;
+        File.WriteAllText(Path.Combine(testDir, "SomeOtherTests.cs"), content);
+
+        var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void FindExampleTest_HandlerSubstringEmbeddedInLargerIdentifier_DoesNotSatisfyHandlerSignal()
+    {
+        var testDir = CreateTestProject("Foo.Tests");
+        // "HandlerTests" and "Handlers" contain the substring "Handler" but are not identifiers
+        // ending in "Handler" - the old Contains("Handler") check would wrongly match these.
+        var content = """
+            public class SomeHandlerTests
+            {
+                [Fact]
+                public void Test()
+                {
+                    var handlers = GetHandlers();
+                    Result<int> result = handlers.First().Handle();
+                    result.IsSuccess.Should().BeTrue();
+                }
+            }
+            """;
+        File.WriteAllText(Path.Combine(testDir, "SomeHandlerTests.cs"), content);
+
+        var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
+
+        result.Should().BeNull();
     }
 
     [Fact]

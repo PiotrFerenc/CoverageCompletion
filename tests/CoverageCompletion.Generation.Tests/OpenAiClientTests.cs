@@ -109,4 +109,84 @@ public class OpenAiClientTests
 
         Environment.SetEnvironmentVariable("OPENAI_API_KEY", "test-key");
     }
+
+    /// <summary>
+    /// Handler that returns a scripted sequence of status codes (one per call, last one repeats
+    /// once exhausted) so retry behaviour can be tested without hitting the network.
+    /// </summary>
+    private class ScriptedHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly HttpStatusCode[] _statusCodes;
+        private readonly string _successBody;
+
+        public int CallCount { get; private set; }
+
+        public ScriptedHttpMessageHandler(string successBody, params HttpStatusCode[] statusCodes)
+        {
+            _successBody = successBody;
+            _statusCodes = statusCodes;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var index = Math.Min(CallCount, _statusCodes.Length - 1);
+            CallCount++;
+            var statusCode = _statusCodes[index];
+            var body = statusCode == HttpStatusCode.OK ? _successBody : "{}";
+            return Task.FromResult(new HttpResponseMessage(statusCode) { Content = new StringContent(body) });
+        }
+    }
+
+    // Zero-length delays keep these tests fast; they only verify retry counts/outcomes, not timing.
+    private static readonly TimeSpan[] NoDelay = { TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero };
+
+    [Fact]
+    public async Task CompleteAsync_SucceedsAfterTwoTransientServerErrors()
+    {
+        var responseJson = ResponseJsonTemplate.Replace("CONTENT_PLACEHOLDER", "```csharp\\ncode\\n```");
+        var handler = new ScriptedHttpMessageHandler(
+            responseJson, HttpStatusCode.InternalServerError, HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
+        var client = new OpenAiClient(new HttpClient(handler), NoDelay);
+
+        var result = await client.CompleteAsync("prompt", CancellationToken.None);
+
+        result.Should().Be("code");
+        handler.CallCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_Unauthorized_DoesNotRetry()
+    {
+        var handler = new ScriptedHttpMessageHandler(ResponseJsonTemplate, HttpStatusCode.Unauthorized);
+        var client = new OpenAiClient(new HttpClient(handler), NoDelay);
+
+        var act = () => client.CompleteAsync("prompt", CancellationToken.None);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+        handler.CallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_PersistentRateLimit_ExhaustsRetriesAndThrows()
+    {
+        var handler = new ScriptedHttpMessageHandler(ResponseJsonTemplate, HttpStatusCode.TooManyRequests);
+        var client = new OpenAiClient(new HttpClient(handler), NoDelay);
+
+        var act = () => client.CompleteAsync("prompt", CancellationToken.None);
+
+        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("*after 4 attempts*");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_RetryIsBounded_DoesNotCallMoreThanMaxAttempts()
+    {
+        // Persistent 500s should stop after exactly retryDelays.Length + 1 attempts, never looping forever.
+        var handler = new ScriptedHttpMessageHandler(ResponseJsonTemplate, HttpStatusCode.InternalServerError);
+        var client = new OpenAiClient(new HttpClient(handler), NoDelay);
+
+        var act = () => client.CompleteAsync("prompt", CancellationToken.None);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+        handler.CallCount.Should().Be(NoDelay.Length + 1);
+    }
 }
