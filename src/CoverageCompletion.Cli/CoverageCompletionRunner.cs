@@ -97,7 +97,15 @@ public sealed class CoverageCompletionRunner(
 
     private async Task ProcessGapAsync(CoverageGap gap, WorktreeSession session, string worktreeSolutionPath, CancellationToken ct)
     {
-        var generated = await testGenerator.GenerateAsync(gap, worktreeSolutionPath, ct);
+        // A failure here (bad/expired API key, quota exhausted, model rejects the request, etc.)
+        // isn't something retrying the SAME call fixes, and it's not this gap's fault the way a
+        // failing build/test is - but it also shouldn't crash the whole session over one gap. Treat
+        // it the same as an exhausted retry: skip this gap, log why, keep going.
+        var generated = await TryGenerateAsync(gap, () => testGenerator.GenerateAsync(gap, worktreeSolutionPath, ct));
+        if (generated is null)
+        {
+            return;
+        }
 
         if (packageEnsurer is not null)
         {
@@ -121,7 +129,12 @@ public sealed class CoverageCompletionRunner(
                     return;
                 }
 
-                generated = await testGenerator.RegenerateAsync(gap, generated, build.Output, ct);
+                generated = await TryGenerateAsync(gap, () => testGenerator.RegenerateAsync(gap, generated, build.Output, ct));
+                if (generated is null)
+                {
+                    return;
+                }
+
                 continue;
             }
 
@@ -137,7 +150,12 @@ public sealed class CoverageCompletionRunner(
                     return;
                 }
 
-                generated = await testGenerator.RegenerateAsync(gap, generated, test.Output, ct);
+                generated = await TryGenerateAsync(gap, () => testGenerator.RegenerateAsync(gap, generated, test.Output, ct));
+                if (generated is null)
+                {
+                    return;
+                }
+
                 continue;
             }
 
@@ -147,6 +165,20 @@ public sealed class CoverageCompletionRunner(
             reporter.RecordCompleted(gap, sha);
             Console.WriteLine("  -> committed");
             return;
+        }
+    }
+
+    private async Task<GeneratedTest?> TryGenerateAsync(CoverageGap gap, Func<Task<GeneratedTest>> generate)
+    {
+        try
+        {
+            return await generate();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            reporter.RecordSkipped(gap, $"test generation failed: {ex.Message}");
+            Console.WriteLine("  -> skipped (generation error)");
+            return null;
         }
     }
 

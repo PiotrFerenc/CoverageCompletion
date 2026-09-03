@@ -94,12 +94,14 @@ public sealed class FakeTestProjectPackageEnsurer(Action<string>? onEnsure = nul
     }
 }
 
-public sealed class FakeTestGenerator(Func<CoverageGap, string> filePathForGap) : ITestGenerator
+public sealed class FakeTestGenerator(Func<CoverageGap, string> filePathForGap, Exception? throwOnGenerate = null) : ITestGenerator
 {
     public int RegenerateCallCount { get; private set; }
 
     public Task<GeneratedTest> GenerateAsync(CoverageGap gap, string solutionPath, CancellationToken ct) =>
-        Task.FromResult(new GeneratedTest(filePathForGap(gap), $"public class {gap.TypeName}Tests {{ }}"));
+        throwOnGenerate is not null
+            ? Task.FromException<GeneratedTest>(throwOnGenerate)
+            : Task.FromResult(new GeneratedTest(filePathForGap(gap), $"public class {gap.TypeName}Tests {{ }}"));
 
     public Task<GeneratedTest> RegenerateAsync(CoverageGap gap, GeneratedTest previous, string buildError, CancellationToken ct)
     {

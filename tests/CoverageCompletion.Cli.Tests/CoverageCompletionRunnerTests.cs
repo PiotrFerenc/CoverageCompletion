@@ -108,6 +108,36 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerationThrows_RecordsSkippedWithoutCrashing_AndStillCleansUp()
+    {
+        // Regression test: a real run against a Mediator-based fixture with a since-revoked API
+        // key crashed the whole process with an unhandled HttpRequestException from OpenAiClient -
+        // build/test failures were already handled via retry/skip, but a failure in generation
+        // itself (bad key, quota, model refusal) propagated straight out of RunAsync.
+        var gap = Gap("Widget");
+        var worktreeManager = new FakeWorktreeManager(_session);
+        var committer = new FakeGitCommitter();
+        var reporter = new FakeSummaryReporter();
+        var testGenerator = new FakeTestGenerator(FilePathFor, throwOnGenerate: new HttpRequestException("401 Unauthorized"));
+        var buildRunner = new FakeBuildTestRunner([], []);
+
+        var runner = new CoverageCompletionRunner(
+            worktreeManager, new FakeCoverageAnalyzer([gap]), buildRunner, committer, reporter, testGenerator);
+
+        var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
+
+        exitCode.Should().Be(0);
+        reporter.Skipped.Should().ContainSingle();
+        reporter.Skipped[0].Gap.Should().Be(gap);
+        reporter.Skipped[0].Reason.Should().Contain("401 Unauthorized");
+        reporter.Completed.Should().BeEmpty();
+        committer.Commits.Should().BeEmpty();
+        buildRunner.BuildCallCount.Should().Be(0);
+        worktreeManager.RemoveCallCount.Should().Be(1);
+        reporter.WriteCallCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task MultiGap_OneSucceedsOneExhausts_BothReportedAndWorktreeRemovedOnce()
     {
         var succeeding = Gap("Widget");
