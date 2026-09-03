@@ -33,6 +33,11 @@ internal static class ProcessRunner
             CreateNoWindow = true,
         };
 
+        // Target solutions may target an SDK/runtime major version not installed in this
+        // environment (e.g. net8.0 apps where only 6/7/10 runtimes are present); roll forward
+        // so `dotnet build`/`dotnet test` can still launch regardless of the host's exact runtimes.
+        startInfo.Environment["DOTNET_ROLL_FORWARD"] = "LatestMajor";
+
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);

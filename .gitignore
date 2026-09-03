@@ -408,6 +408,9 @@ FodyWeavers.xsd
 *.sln.iml
 .idea/
 
+# Claude Code local session state
+.claude/
+
 ##
 ## Visual studio for Mac
 ##
