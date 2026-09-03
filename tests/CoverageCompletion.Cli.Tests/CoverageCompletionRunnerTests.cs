@@ -192,7 +192,7 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
     public async Task PackageEnsurer_WhenItModifiesCsproj_CommitsCsprojAlongsideGeneratedTestFile()
     {
         // Regression test: a real-key end-to-end run showed the package ensurer's csproj edit
-        // (adding FluentAssertions/NSubstitute) only ever existed in the ephemeral worktree - the
+        // (adding the required test packages) only ever existed in the ephemeral worktree - the
         // commit only ever included the generated test file, so a fresh checkout of that commit
         // failed to build. The ensurer's return value must now flow into the same commit.
         var gap = Gap("Widget");

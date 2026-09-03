@@ -188,8 +188,8 @@ public class TestPatternFinderTests : IDisposable
         // an empty list for every real invocation - FindExampleTest never found a style pattern,
         // and TestGenerator.BuildTestFilePath fell back to writing generated tests into the
         // SOURCE project's own directory instead of the test project's, which then made
-        // DotnetPackageEnsurer add FluentAssertions to the wrong .csproj and break the build for
-        // the whole retry loop. Unit tests never caught this because they all passed a bare
+        // DotnetPackageEnsurer add a required test package to the wrong .csproj and break the
+        // build for the whole retry loop. Unit tests never caught this because they all passed a bare
         // directory, not a .sln file path.
         var byName = CreateTestProject("Foo.Tests");
         var slnPath = Path.Combine(_solutionRoot, "Solution.sln");

@@ -90,8 +90,9 @@ public class OpenAiClientTests
         handler.LastAuthorization.ShouldNotBeNull();
         handler.LastAuthorization!.Scheme.ShouldBe("Bearer");
         handler.LastAuthorization.Parameter.ShouldBe("test-key");
+        handler.LastRequestBody.ShouldNotBeNull();
         handler.LastRequestBody!.ShouldContain("gpt-custom");
-        handler.LastRequestBody!.ShouldContain("prompt text");
+        handler.LastRequestBody.ShouldContain("prompt text");
 
         Environment.SetEnvironmentVariable("OPENAI_MODEL", null);
     }
