@@ -144,4 +144,158 @@ public class CoberturaCoverageParserTests
         gap.Namespace.Should().BeEmpty();
         gap.TypeName.Should().Be("TopLevelType");
     }
+
+    [Fact]
+    public void Parse_WithSingleSourceRoot_CombinesItWithARelativeFilename()
+    {
+        // Regression test for the real bug this parser used to have: coverlet on Linux emits
+        // "/" as the <source> root, and a relative filename with the leading slash stripped -
+        // the single-source case needs to combine the two, not use the filename as-is.
+        const string xml = """
+            <coverage>
+              <sources>
+                <source>/repo</source>
+              </sources>
+              <packages>
+                <package name="MyApp">
+                  <classes>
+                    <class name="MyApp.Calculator" filename="src/MyApp/Calculator.cs">
+                      <lines>
+                        <line number="1" hits="0" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+
+        var gaps = CoberturaCoverageParser.Parse(xml);
+
+        gaps.Single().FilePath.Should().Be("/repo/src/MyApp/Calculator.cs");
+    }
+
+    [Fact]
+    public void Parse_WithSourceRootPresent_LeavesAnAlreadyRootedFilenameUnchanged()
+    {
+        const string xml = """
+            <coverage>
+              <sources>
+                <source>/repo</source>
+              </sources>
+              <packages>
+                <package name="MyApp">
+                  <classes>
+                    <class name="MyApp.Calculator" filename="/repo/src/MyApp/Calculator.cs">
+                      <lines>
+                        <line number="1" hits="0" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+
+        var gaps = CoberturaCoverageParser.Parse(xml);
+
+        gaps.Single().FilePath.Should().Be("/repo/src/MyApp/Calculator.cs");
+    }
+
+    [Fact]
+    public void Parse_WithNoSourcesElement_UsesTheFilenameAsIs_WithoutCrashing()
+    {
+        // Some Cobertura-emitting tools omit <sources> entirely; the parser must not throw and
+        // should just pass the filename through unresolved.
+        const string xml = """
+            <coverage>
+              <packages>
+                <package name="MyApp">
+                  <classes>
+                    <class name="MyApp.Calculator" filename="src/MyApp/Calculator.cs">
+                      <lines>
+                        <line number="1" hits="0" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+
+        var gaps = CoberturaCoverageParser.Parse(xml);
+
+        gaps.Single().FilePath.Should().Be("src/MyApp/Calculator.cs");
+    }
+
+    [Fact]
+    public void Parse_WithMultipleSourceRoots_PrefersTheRootThatResolvesToAnExistingFile()
+    {
+        var tempRoot = Directory.CreateTempSubdirectory("cobertura-multi-source-");
+        try
+        {
+            var rootA = Path.Combine(tempRoot.FullName, "rootA");
+            var rootB = Path.Combine(tempRoot.FullName, "rootB");
+            Directory.CreateDirectory(Path.Combine(rootB, "src", "MyApp"));
+            // Only rootB has the file for real - rootA is a plausible-looking root that just
+            // doesn't happen to contain this particular file (the multi-module scenario).
+            File.WriteAllText(Path.Combine(rootB, "src", "MyApp", "Calculator.cs"), "// stub");
+
+            var xml = $"""
+                <coverage>
+                  <sources>
+                    <source>{rootA}</source>
+                    <source>{rootB}</source>
+                  </sources>
+                  <packages>
+                    <package name="MyApp">
+                      <classes>
+                        <class name="MyApp.Calculator" filename="src/MyApp/Calculator.cs">
+                          <lines>
+                            <line number="1" hits="0" />
+                          </lines>
+                        </class>
+                      </classes>
+                    </package>
+                  </packages>
+                </coverage>
+                """;
+
+            var gaps = CoberturaCoverageParser.Parse(xml);
+
+            gaps.Single().FilePath.Should().Be(Path.Combine(rootB, "src", "MyApp", "Calculator.cs"));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot.FullName, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Parse_WithMultipleSourceRoots_FallsBackToTheFirstRoot_WhenNoneResolveToAnExistingFile()
+    {
+        const string xml = """
+            <coverage>
+              <sources>
+                <source>/root/a</source>
+                <source>/root/b</source>
+              </sources>
+              <packages>
+                <package name="MyApp">
+                  <classes>
+                    <class name="MyApp.Calculator" filename="src/MyApp/Calculator.cs">
+                      <lines>
+                        <line number="1" hits="0" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+
+        var gaps = CoberturaCoverageParser.Parse(xml);
+
+        gaps.Single().FilePath.Should().Be("/root/a/src/MyApp/Calculator.cs");
+    }
 }
