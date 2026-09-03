@@ -1,5 +1,5 @@
 using CoverageCompletion.Contracts;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Cli.Tests;
 
@@ -47,14 +47,14 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        reporter.Completed.Should().ContainSingle().Which.Gap.Should().Be(gap);
-        reporter.Skipped.Should().BeEmpty();
-        committer.Commits.Should().ContainSingle();
-        testGenerator.RegenerateCallCount.Should().Be(0);
-        worktreeManager.RemoveCallCount.Should().Be(1);
-        reporter.WriteCallCount.Should().Be(1);
-        File.Exists(FilePathFor(gap)).Should().BeTrue();
+        exitCode.ShouldBe(0);
+        reporter.Completed.ShouldHaveSingleItem().Gap.ShouldBe(gap);
+        reporter.Skipped.ShouldBeEmpty();
+        committer.Commits.ShouldHaveSingleItem();
+        testGenerator.RegenerateCallCount.ShouldBe(0);
+        worktreeManager.RemoveCallCount.ShouldBe(1);
+        reporter.WriteCallCount.ShouldBe(1);
+        File.Exists(FilePathFor(gap)).ShouldBeTrue();
     }
 
     [Fact]
@@ -73,12 +73,12 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        testGenerator.RegenerateCallCount.Should().Be(1);
-        buildRunner.BuildCallCount.Should().Be(2);
-        committer.Commits.Should().ContainSingle();
-        reporter.Completed.Should().ContainSingle();
-        reporter.Skipped.Should().BeEmpty();
+        exitCode.ShouldBe(0);
+        testGenerator.RegenerateCallCount.ShouldBe(1);
+        buildRunner.BuildCallCount.ShouldBe(2);
+        committer.Commits.ShouldHaveSingleItem();
+        reporter.Completed.ShouldHaveSingleItem();
+        reporter.Skipped.ShouldBeEmpty();
     }
 
     [Fact]
@@ -97,14 +97,14 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        reporter.Skipped.Should().ContainSingle();
-        reporter.Skipped[0].Gap.Should().Be(gap);
-        reporter.Skipped[0].Reason.Should().Contain("build failed after 2 attempts");
-        reporter.Completed.Should().BeEmpty();
-        committer.Commits.Should().BeEmpty();
-        buildRunner.BuildCallCount.Should().Be(2);
-        worktreeManager.RemoveCallCount.Should().Be(1);
+        exitCode.ShouldBe(0);
+        reporter.Skipped.ShouldHaveSingleItem();
+        reporter.Skipped[0].Gap.ShouldBe(gap);
+        reporter.Skipped[0].Reason.ShouldContain("build failed after 2 attempts");
+        reporter.Completed.ShouldBeEmpty();
+        committer.Commits.ShouldBeEmpty();
+        buildRunner.BuildCallCount.ShouldBe(2);
+        worktreeManager.RemoveCallCount.ShouldBe(1);
     }
 
     [Fact]
@@ -126,15 +126,15 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        reporter.Skipped.Should().ContainSingle();
-        reporter.Skipped[0].Gap.Should().Be(gap);
-        reporter.Skipped[0].Reason.Should().Contain("401 Unauthorized");
-        reporter.Completed.Should().BeEmpty();
-        committer.Commits.Should().BeEmpty();
-        buildRunner.BuildCallCount.Should().Be(0);
-        worktreeManager.RemoveCallCount.Should().Be(1);
-        reporter.WriteCallCount.Should().Be(1);
+        exitCode.ShouldBe(0);
+        reporter.Skipped.ShouldHaveSingleItem();
+        reporter.Skipped[0].Gap.ShouldBe(gap);
+        reporter.Skipped[0].Reason.ShouldContain("401 Unauthorized");
+        reporter.Completed.ShouldBeEmpty();
+        committer.Commits.ShouldBeEmpty();
+        buildRunner.BuildCallCount.ShouldBe(0);
+        worktreeManager.RemoveCallCount.ShouldBe(1);
+        reporter.WriteCallCount.ShouldBe(1);
     }
 
     [Fact]
@@ -155,12 +155,12 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        reporter.Completed.Should().ContainSingle().Which.Gap.Should().Be(succeeding);
-        reporter.Skipped.Should().ContainSingle().Which.Gap.Should().Be(failing);
-        committer.Commits.Should().ContainSingle();
-        worktreeManager.RemoveCallCount.Should().Be(1);
-        reporter.WriteCallCount.Should().Be(1);
+        exitCode.ShouldBe(0);
+        reporter.Completed.ShouldHaveSingleItem().Gap.ShouldBe(succeeding);
+        reporter.Skipped.ShouldHaveSingleItem().Gap.ShouldBe(failing);
+        committer.Commits.ShouldHaveSingleItem();
+        worktreeManager.RemoveCallCount.ShouldBe(1);
+        reporter.WriteCallCount.ShouldBe(1);
     }
 
     [Fact]
@@ -183,9 +183,9 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        packageEnsurer.EnsuredFilePaths.Should().ContainSingle().Which.Should().Be(FilePathFor(gap));
-        order.Should().Equal("ensure", "build", "test");
+        exitCode.ShouldBe(0);
+        packageEnsurer.EnsuredFilePaths.ShouldHaveSingleItem().ShouldBe(FilePathFor(gap));
+        order.ShouldBe(["ensure", "build", "test"]);
     }
 
     [Fact]
@@ -210,10 +210,11 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        committer.Commits.Should().ContainSingle();
-        committer.Commits[0].RelativeFilePaths.Should().BeEquivalentTo(
-            [Path.GetRelativePath(_worktreePath, FilePathFor(gap)), Path.GetRelativePath(_worktreePath, csprojPath)]);
+        exitCode.ShouldBe(0);
+        committer.Commits.ShouldHaveSingleItem();
+        committer.Commits[0].RelativeFilePaths.ShouldBe(
+            [Path.GetRelativePath(_worktreePath, FilePathFor(gap)), Path.GetRelativePath(_worktreePath, csprojPath)],
+            ignoreOrder: true);
     }
 
     [Fact]
@@ -242,14 +243,14 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, cts.Token);
 
-        exitCode.Should().Be(130);
-        reporter.Completed.Should().ContainSingle().Which.Gap.Should().Be(succeeding);
-        reporter.Skipped.Should().ContainSingle();
-        reporter.Skipped[0].Gap.Should().Be(interrupted);
-        reporter.Skipped[0].Reason.Should().Contain("cancelled");
-        committer.Commits.Should().ContainSingle();
-        worktreeManager.RemoveCallCount.Should().Be(1);
-        reporter.WriteCallCount.Should().Be(1);
+        exitCode.ShouldBe(130);
+        reporter.Completed.ShouldHaveSingleItem().Gap.ShouldBe(succeeding);
+        reporter.Skipped.ShouldHaveSingleItem();
+        reporter.Skipped[0].Gap.ShouldBe(interrupted);
+        reporter.Skipped[0].Reason.ShouldContain("cancelled");
+        committer.Commits.ShouldHaveSingleItem();
+        worktreeManager.RemoveCallCount.ShouldBe(1);
+        reporter.WriteCallCount.ShouldBe(1);
     }
 
     [Fact]
@@ -269,7 +270,7 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
-        exitCode.Should().Be(0);
-        branchMerger.Calls.Should().ContainSingle().Which.Should().Be((_repoPath, _session.BaseBranch, _session.BranchName));
+        exitCode.ShouldBe(0);
+        branchMerger.Calls.ShouldHaveSingleItem().ShouldBe((_repoPath, _session.BaseBranch, _session.BranchName));
     }
 }

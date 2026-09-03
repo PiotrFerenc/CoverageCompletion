@@ -4,14 +4,14 @@ namespace CoverageCompletion.Infrastructure.Packages;
 
 /// <summary>
 /// Makes sure the generated test's own project references the packages every generated test
-/// assumes are available (FluentAssertions, NSubstitute) - the fixed test stack this tool
+/// assumes are available (Shouldly, NSubstitute) - the fixed test stack this tool
 /// generates against. If the target solution's test project doesn't already have them, a
 /// build failure isn't fixable by the LLM regenerate-on-error loop, so this runs once up
 /// front instead.
 /// </summary>
 public sealed class DotnetPackageEnsurer : ITestProjectPackageEnsurer
 {
-    private static readonly string[] RequiredPackages = ["FluentAssertions", "NSubstitute"];
+    private static readonly string[] RequiredPackages = ["Shouldly", "NSubstitute"];
 
     public async Task<string?> EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct)
     {

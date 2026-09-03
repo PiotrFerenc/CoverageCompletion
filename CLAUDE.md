@@ -43,8 +43,8 @@ for — `ProcessRunner` (in `CoverageCompletion.Infrastructure`) sets
 `dotnet build`/`dotnet test` against those target solutions still launch regardless of
 the host's exact runtimes. No manual roll-forward setup is required anywhere anymore.
 
-FluentAssertions is pinned to `7.x` in both test projects — 8.x requires a paid commercial
-license.
+Assertions use [Shouldly](https://github.com/shouldly/shouldly) (`X.ShouldBe(Y)` style) — chosen
+specifically to avoid FluentAssertions' 8.x paid-commercial-license requirement.
 
 ## Architecture
 
@@ -105,5 +105,5 @@ The target solution being tested is expected to use Mediator (source-generated
 `IRequestHandler<TRequest, TResponse>`) and FluentResults (`Result`/`Result<T>`) — the
 generated tests should match that solution's existing assertion style, which is why
 `TestPatternFinder` looks for a real example in the target repo rather than using a
-hardcoded template. Generated tests use xUnit + FluentAssertions + NSubstitute, with
+hardcoded template. Generated tests use xUnit + Shouldly + NSubstitute, with
 integration-style tests using in-memory/mocked dependencies rather than Testcontainers.

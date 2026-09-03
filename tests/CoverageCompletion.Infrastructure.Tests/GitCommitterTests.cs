@@ -1,6 +1,6 @@
 using CoverageCompletion.Contracts;
 using CoverageCompletion.Infrastructure.Git;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Infrastructure.Tests;
 
@@ -23,10 +23,10 @@ public class GitCommitterTests : IDisposable
             "add NewFile.txt",
             CancellationToken.None);
 
-        sha.Should().MatchRegex("^[0-9a-f]{40}$");
+        sha.ShouldMatch("^[0-9a-f]{40}$");
 
         var log = GitCli.Run(_session.WorktreePath, "log", "-1", "--pretty=%H %s");
-        log.Should().Be($"{sha} add NewFile.txt");
+        log.ShouldBe($"{sha} add NewFile.txt");
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public class GitCommitterTests : IDisposable
 
         var changedFiles = GitCli.Run(_session.WorktreePath, "show", "--name-only", "--pretty=format:", sha);
         changedFiles.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Should().BeEquivalentTo(["First.txt", "Second.txt"]);
+            .ShouldBe(["First.txt", "Second.txt"], ignoreOrder: true);
     }
 
     public void Dispose()

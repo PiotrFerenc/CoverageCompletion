@@ -1,6 +1,6 @@
 using CoverageCompletion.Contracts;
 using CoverageCompletion.Generation;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Generation.Tests;
 
@@ -20,15 +20,15 @@ public class PromptBuilderTests
         var gap = MakeGap();
         var prompt = new PromptBuilder().BuildInitialPrompt(gap, "public class OrderHandler {}", exampleTestCode: null);
 
-        prompt.Should().Contain("OrderHandler");
-        prompt.Should().Contain("Handle");
-        prompt.Should().Contain("Foo.Handlers");
-        prompt.Should().Contain("public class OrderHandler {}");
-        prompt.Should().Contain("10-12");
-        prompt.Should().Contain("xUnit");
-        prompt.Should().Contain("FluentAssertions");
-        prompt.Should().Contain("NSubstitute");
-        prompt.Should().Contain("```csharp");
+        prompt.ShouldContain("OrderHandler");
+        prompt.ShouldContain("Handle");
+        prompt.ShouldContain("Foo.Handlers");
+        prompt.ShouldContain("public class OrderHandler {}");
+        prompt.ShouldContain("10-12");
+        prompt.ShouldContain("xUnit");
+        prompt.ShouldContain("Shouldly");
+        prompt.ShouldContain("NSubstitute");
+        prompt.ShouldContain("```csharp");
     }
 
     [Fact]
@@ -39,8 +39,8 @@ public class PromptBuilderTests
 
         var prompt = new PromptBuilder().BuildInitialPrompt(gap, "public class OrderHandler {}", example);
 
-        prompt.Should().Contain(example);
-        prompt.Should().Contain("Result");
+        prompt.ShouldContain(example);
+        prompt.ShouldContain("Result");
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class PromptBuilderTests
         var gap = MakeGap();
         var prompt = new PromptBuilder().BuildInitialPrompt(gap, "public class OrderHandler {}", exampleTestCode: null);
 
-        prompt.Should().NotContain("Wzorzec stylu");
+        prompt.ShouldNotContain("Wzorzec stylu");
     }
 
     [Fact]
@@ -61,10 +61,10 @@ public class PromptBuilderTests
 
         var prompt = new PromptBuilder().BuildRegenerationPrompt(gap, previous, error);
 
-        prompt.Should().Contain("OrderHandler");
-        prompt.Should().Contain("Handle");
-        prompt.Should().Contain(previous.Content);
-        prompt.Should().Contain(error);
-        prompt.Should().Contain("```csharp");
+        prompt.ShouldContain("OrderHandler");
+        prompt.ShouldContain("Handle");
+        prompt.ShouldContain(previous.Content);
+        prompt.ShouldContain(error);
+        prompt.ShouldContain("```csharp");
     }
 }

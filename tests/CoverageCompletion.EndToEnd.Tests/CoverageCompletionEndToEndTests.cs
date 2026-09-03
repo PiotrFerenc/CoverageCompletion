@@ -5,7 +5,7 @@ using CoverageCompletion.Infrastructure.Build;
 using CoverageCompletion.Infrastructure.Coverage;
 using CoverageCompletion.Infrastructure.Git;
 using CoverageCompletion.Infrastructure.Reporting;
-using FluentAssertions;
+using Shouldly;
 using Xunit;
 
 namespace CoverageCompletion.EndToEnd.Tests;
@@ -51,27 +51,27 @@ public sealed class CoverageCompletionEndToEndTests : IAsyncLifetime
         var exitCode = await runner.RunAsync(_repoPath, solutionPath, CancellationToken.None);
 
         // Assert
-        exitCode.Should().Be(0, "the run should complete without cancellation or an unhandled failure");
+        exitCode.ShouldBe(0, "the run should complete without cancellation or an unhandled failure");
 
-        worktreeManager.LastWorktreePath.Should().NotBeNull("the runner must have created a worktree");
-        Directory.Exists(worktreeManager.LastWorktreePath).Should().BeFalse(
+        worktreeManager.LastWorktreePath.ShouldNotBeNull("the runner must have created a worktree");
+        Directory.Exists(worktreeManager.LastWorktreePath).ShouldBeFalse(
             "the runner removes the worktree directory in its finally block");
 
         var branchListing = RunGit(_repoPath, "branch", "--list", "coverage/session-*");
-        branchListing.Should().NotBeNullOrWhiteSpace("a coverage/session-* branch should have been created");
+        branchListing.ShouldNotBeNullOrWhiteSpace("a coverage/session-* branch should have been created");
         var branchName = branchListing.Trim().TrimStart('*', ' ');
 
         var branchLog = RunGit(_repoPath, "log", branchName, "--oneline");
         var commitCount = branchLog.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
-        commitCount.Should().BeGreaterThan(1, "the branch should carry the generated-test commit on top of the initial commit");
+        commitCount.ShouldBeGreaterThan(1, "the branch should carry the generated-test commit on top of the initial commit");
 
         var worktreeListing = RunGit(_repoPath, "worktree", "list");
-        worktreeListing.Should().NotContain("coverage-worktrees", "`git worktree remove` should have dropped the entry");
+        worktreeListing.ShouldNotContain("coverage-worktrees", customMessage: "`git worktree remove` should have dropped the entry");
 
         var summaryFiles = Directory.GetFiles(_repoPath, "coverage-completion-summary-*.md");
-        summaryFiles.Should().ContainSingle("the runner always writes exactly one summary file per session");
+        summaryFiles.ShouldHaveSingleItem("the runner always writes exactly one summary file per session");
         var summaryContent = await File.ReadAllTextAsync(summaryFiles[0]);
-        summaryContent.Should().Contain("Calculator.Classify", "the summary should mention the gap that got completed");
+        summaryContent.ShouldContain("Calculator.Classify", customMessage: "the summary should mention the gap that got completed");
     }
 
     /// <summary>
@@ -103,22 +103,22 @@ public sealed class CoverageCompletionEndToEndTests : IAsyncLifetime
         var exitCode = await runner.RunAsync(_repoPath, solutionPath, CancellationToken.None);
 
         // Assert
-        exitCode.Should().Be(0, "the run should complete without cancellation or an unhandled failure");
+        exitCode.ShouldBe(0, "the run should complete without cancellation or an unhandled failure");
 
-        testGenerator.GeneratedGaps.Should().HaveCount(2, "both Widget.Classify and Gadget.Sign should have been detected as gaps");
+        testGenerator.GeneratedGaps.Count.ShouldBe(2, "both Widget.Classify and Gadget.Sign should have been detected as gaps");
 
-        var widgetGap = testGenerator.GeneratedGaps.Should().ContainSingle(g => g.TypeName == "Widget").Which;
-        Path.GetFileName(widgetGap.ProjectPath).Should().Be("Sample.Lib.Alpha.csproj",
+        var widgetGap = testGenerator.GeneratedGaps.Single(g => g.TypeName == "Widget");
+        Path.GetFileName(widgetGap.ProjectPath).ShouldBe("Sample.Lib.Alpha.csproj",
             "the Widget gap's source file lives under Sample.Lib.Alpha, not Sample.Lib.Beta or the test project");
-        Path.GetFileName(Path.GetDirectoryName(widgetGap.FilePath)).Should().Be("Sample.Lib.Alpha");
+        Path.GetFileName(Path.GetDirectoryName(widgetGap.FilePath)).ShouldBe("Sample.Lib.Alpha");
 
-        var gadgetGap = testGenerator.GeneratedGaps.Should().ContainSingle(g => g.TypeName == "Gadget").Which;
-        Path.GetFileName(gadgetGap.ProjectPath).Should().Be("Sample.Lib.Beta.csproj",
+        var gadgetGap = testGenerator.GeneratedGaps.Single(g => g.TypeName == "Gadget");
+        Path.GetFileName(gadgetGap.ProjectPath).ShouldBe("Sample.Lib.Beta.csproj",
             "the Gadget gap's source file lives under Sample.Lib.Beta, not Sample.Lib.Alpha or the test project");
-        Path.GetFileName(Path.GetDirectoryName(gadgetGap.FilePath)).Should().Be("Sample.Lib.Beta");
+        Path.GetFileName(Path.GetDirectoryName(gadgetGap.FilePath)).ShouldBe("Sample.Lib.Beta");
 
-        worktreeManager.LastWorktreePath.Should().NotBeNull("the runner must have created a worktree");
-        Directory.Exists(worktreeManager.LastWorktreePath).Should().BeFalse(
+        worktreeManager.LastWorktreePath.ShouldNotBeNull("the runner must have created a worktree");
+        Directory.Exists(worktreeManager.LastWorktreePath).ShouldBeFalse(
             "the runner removes the worktree directory in its finally block");
 
         var branchListing = RunGit(_repoPath, "branch", "--list", "coverage/session-*");
@@ -126,16 +126,16 @@ public sealed class CoverageCompletionEndToEndTests : IAsyncLifetime
 
         var branchLog = RunGit(_repoPath, "log", branchName, "--oneline");
         var commitCount = branchLog.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
-        commitCount.Should().Be(3, "the initial commit plus one generated-test commit per gap");
+        commitCount.ShouldBe(3, "the initial commit plus one generated-test commit per gap");
 
         var worktreeListing = RunGit(_repoPath, "worktree", "list");
-        worktreeListing.Should().NotContain("coverage-worktrees", "`git worktree remove` should have dropped the entry");
+        worktreeListing.ShouldNotContain("coverage-worktrees", customMessage: "`git worktree remove` should have dropped the entry");
 
         var summaryFiles = Directory.GetFiles(_repoPath, "coverage-completion-summary-*.md");
-        summaryFiles.Should().ContainSingle("the runner always writes exactly one summary file per session");
+        summaryFiles.ShouldHaveSingleItem("the runner always writes exactly one summary file per session");
         var summaryContent = await File.ReadAllTextAsync(summaryFiles[0]);
-        summaryContent.Should().Contain("Widget.Classify");
-        summaryContent.Should().Contain("Gadget.Sign");
+        summaryContent.ShouldContain("Widget.Classify");
+        summaryContent.ShouldContain("Gadget.Sign");
     }
 
     // ---- fixture construction -------------------------------------------------------------

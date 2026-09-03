@@ -13,7 +13,7 @@ public class PromptBuilder
         var sb = new StringBuilder();
 
         sb.AppendLine(
-            $"Wygeneruj test jednostkowy xUnit + FluentAssertions + NSubstitute dla poniższej klasy/metody, " +
+            $"Wygeneruj test jednostkowy xUnit + Shouldly + NSubstitute dla poniższej klasy/metody, " +
             $"pokrywający niepokryte linie {FormatLines(gap.UncoveredLines)}.");
         sb.AppendLine();
         sb.AppendLine($"Namespace: {gap.Namespace}");

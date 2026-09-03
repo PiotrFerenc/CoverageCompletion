@@ -1,5 +1,5 @@
 using CoverageCompletion.Infrastructure.Git;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Infrastructure.Tests;
 
@@ -20,12 +20,12 @@ public class BranchMergerTests : IDisposable
 
         var outcome = await _sut.MergeSessionIntoNewBranchAsync(_repo.Path, "main", "coverage/session-clean", CancellationToken.None);
 
-        outcome.HasConflicts.Should().BeFalse();
-        outcome.TargetBranch.Should().StartWith("coverage/merged-");
-        Directory.Exists(outcome.TargetWorktreePath).Should().BeFalse("a clean merge cleans up its temporary worktree");
+        outcome.HasConflicts.ShouldBeFalse();
+        outcome.TargetBranch.ShouldStartWith("coverage/merged-");
+        Directory.Exists(outcome.TargetWorktreePath).ShouldBeFalse("a clean merge cleans up its temporary worktree");
 
         var log = GitCli.Run(_repo.Path, "log", "--oneline", outcome.TargetBranch);
-        log.Should().Contain("test: cover NewFile");
+        log.ShouldContain("test: cover NewFile");
     }
 
     [Fact]
@@ -44,9 +44,9 @@ public class BranchMergerTests : IDisposable
         var outcome = await _sut.MergeSessionIntoNewBranchAsync(_repo.Path, "main", "coverage/session-conflict", CancellationToken.None);
         _leftoverWorktreePath = outcome.TargetWorktreePath;
 
-        outcome.HasConflicts.Should().BeTrue();
-        Directory.Exists(outcome.TargetWorktreePath).Should().BeTrue("the user needs a real checkout to resolve the conflict in");
-        File.ReadAllText(Path.Combine(outcome.TargetWorktreePath, "README.md")).Should().Contain("<<<<<<<");
+        outcome.HasConflicts.ShouldBeTrue();
+        Directory.Exists(outcome.TargetWorktreePath).ShouldBeTrue("the user needs a real checkout to resolve the conflict in");
+        File.ReadAllText(Path.Combine(outcome.TargetWorktreePath, "README.md")).ShouldContain("<<<<<<<");
     }
 
     public void Dispose()

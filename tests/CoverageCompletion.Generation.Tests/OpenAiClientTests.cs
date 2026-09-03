@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using CoverageCompletion.Generation;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Generation.Tests;
 
@@ -61,7 +61,7 @@ public class OpenAiClientTests
 
         var result = await client.CompleteAsync("some prompt", CancellationToken.None);
 
-        result.Should().Be("public class Foo {}");
+        result.ShouldBe("public class Foo {}");
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class OpenAiClientTests
 
         var result = await client.CompleteAsync("some prompt", CancellationToken.None);
 
-        result.Should().Be("public class Foo {}");
+        result.ShouldBe("public class Foo {}");
     }
 
     [Fact]
@@ -87,11 +87,11 @@ public class OpenAiClientTests
 
         await client.CompleteAsync("prompt text", CancellationToken.None);
 
-        handler.LastAuthorization.Should().NotBeNull();
-        handler.LastAuthorization!.Scheme.Should().Be("Bearer");
-        handler.LastAuthorization.Parameter.Should().Be("test-key");
-        handler.LastRequestBody.Should().Contain("gpt-custom");
-        handler.LastRequestBody.Should().Contain("prompt text");
+        handler.LastAuthorization.ShouldNotBeNull();
+        handler.LastAuthorization!.Scheme.ShouldBe("Bearer");
+        handler.LastAuthorization.Parameter.ShouldBe("test-key");
+        handler.LastRequestBody!.ShouldContain("gpt-custom");
+        handler.LastRequestBody!.ShouldContain("prompt text");
 
         Environment.SetEnvironmentVariable("OPENAI_MODEL", null);
     }
@@ -105,7 +105,8 @@ public class OpenAiClientTests
 
         var act = () => client.CompleteAsync("prompt", CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*OPENAI_API_KEY*");
+        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
+        ex.Message.ShouldContain("OPENAI_API_KEY");
 
         Environment.SetEnvironmentVariable("OPENAI_API_KEY", "test-key");
     }
@@ -150,8 +151,8 @@ public class OpenAiClientTests
 
         var result = await client.CompleteAsync("prompt", CancellationToken.None);
 
-        result.Should().Be("code");
-        handler.CallCount.Should().Be(3);
+        result.ShouldBe("code");
+        handler.CallCount.ShouldBe(3);
     }
 
     [Fact]
@@ -162,8 +163,8 @@ public class OpenAiClientTests
 
         var act = () => client.CompleteAsync("prompt", CancellationToken.None);
 
-        await act.Should().ThrowAsync<HttpRequestException>();
-        handler.CallCount.Should().Be(1);
+        await Should.ThrowAsync<HttpRequestException>(act);
+        handler.CallCount.ShouldBe(1);
     }
 
     [Fact]
@@ -174,7 +175,8 @@ public class OpenAiClientTests
 
         var act = () => client.CompleteAsync("prompt", CancellationToken.None);
 
-        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("*after 4 attempts*");
+        var ex = await Should.ThrowAsync<HttpRequestException>(act);
+        ex.Message.ShouldContain("after 4 attempts");
     }
 
     [Fact]
@@ -186,7 +188,7 @@ public class OpenAiClientTests
 
         var act = () => client.CompleteAsync("prompt", CancellationToken.None);
 
-        await act.Should().ThrowAsync<HttpRequestException>();
-        handler.CallCount.Should().Be(NoDelay.Length + 1);
+        await Should.ThrowAsync<HttpRequestException>(act);
+        handler.CallCount.ShouldBe(NoDelay.Length + 1);
     }
 }

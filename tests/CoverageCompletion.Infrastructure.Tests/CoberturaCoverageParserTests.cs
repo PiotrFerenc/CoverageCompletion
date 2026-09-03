@@ -1,5 +1,5 @@
 using CoverageCompletion.Infrastructure.Coverage;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Infrastructure.Tests;
 
@@ -44,7 +44,7 @@ public class CoberturaCoverageParserTests
     {
         var gaps = CoberturaCoverageParser.Parse(SampleXml);
 
-        gaps.Should().ContainSingle();
+        gaps.ShouldHaveSingleItem();
     }
 
     [Fact]
@@ -53,11 +53,11 @@ public class CoberturaCoverageParserTests
         var gaps = CoberturaCoverageParser.Parse(SampleXml);
 
         var gap = gaps.Single();
-        gap.Namespace.Should().Be("MyApp");
-        gap.TypeName.Should().Be("Calculator");
-        gap.MemberName.Should().Be("Subtract");
-        gap.FilePath.Should().Be("/repo/src/MyApp/Calculator.cs");
-        gap.UncoveredLines.Should().BeEquivalentTo([20, 21]);
+        gap.Namespace.ShouldBe("MyApp");
+        gap.TypeName.ShouldBe("Calculator");
+        gap.MemberName.ShouldBe("Subtract");
+        gap.FilePath.ShouldBe("/repo/src/MyApp/Calculator.cs");
+        gap.UncoveredLines.ShouldBe([20, 21], ignoreOrder: true);
     }
 
     [Fact]
@@ -83,9 +83,9 @@ public class CoberturaCoverageParserTests
         var gaps = CoberturaCoverageParser.Parse(xml);
 
         var gap = gaps.Single();
-        gap.TypeName.Should().Be("Widget");
-        gap.MemberName.Should().Be("Widget");
-        gap.UncoveredLines.Should().BeEquivalentTo([5]);
+        gap.TypeName.ShouldBe("Widget");
+        gap.MemberName.ShouldBe("Widget");
+        gap.UncoveredLines.ShouldBe([5], ignoreOrder: true);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class CoberturaCoverageParserTests
 
         var gaps = CoberturaCoverageParser.Parse(xml);
 
-        gaps.Should().BeEmpty();
+        gaps.ShouldBeEmpty();
     }
 
     [Fact]
@@ -141,8 +141,8 @@ public class CoberturaCoverageParserTests
         var gaps = CoberturaCoverageParser.Parse(xml);
 
         var gap = gaps.Single();
-        gap.Namespace.Should().BeEmpty();
-        gap.TypeName.Should().Be("TopLevelType");
+        gap.Namespace.ShouldBeEmpty();
+        gap.TypeName.ShouldBe("TopLevelType");
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public class CoberturaCoverageParserTests
 
         var gaps = CoberturaCoverageParser.Parse(xml);
 
-        gaps.Single().FilePath.Should().Be("/repo/src/MyApp/Calculator.cs");
+        gaps.Single().FilePath.ShouldBe("/repo/src/MyApp/Calculator.cs");
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public class CoberturaCoverageParserTests
 
         var gaps = CoberturaCoverageParser.Parse(xml);
 
-        gaps.Single().FilePath.Should().Be("/repo/src/MyApp/Calculator.cs");
+        gaps.Single().FilePath.ShouldBe("/repo/src/MyApp/Calculator.cs");
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class CoberturaCoverageParserTests
 
         var gaps = CoberturaCoverageParser.Parse(xml);
 
-        gaps.Single().FilePath.Should().Be("src/MyApp/Calculator.cs");
+        gaps.Single().FilePath.ShouldBe("src/MyApp/Calculator.cs");
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public class CoberturaCoverageParserTests
 
             var gaps = CoberturaCoverageParser.Parse(xml);
 
-            gaps.Single().FilePath.Should().Be(Path.Combine(rootB, "src", "MyApp", "Calculator.cs"));
+            gaps.Single().FilePath.ShouldBe(Path.Combine(rootB, "src", "MyApp", "Calculator.cs"));
         }
         finally
         {
@@ -309,10 +309,10 @@ public class CoberturaCoverageParserTests
 
         var gaps = CoberturaCoverageParser.Parse(xml);
 
-        var gap = gaps.Should().ContainSingle().Subject;
-        gap.TypeName.Should().Be("CancelOrderHandler");
-        gap.MemberName.Should().Be("Handle");
-        gap.UncoveredLines.Should().BeEquivalentTo([15]);
+        var gap = gaps.ShouldHaveSingleItem();
+        gap.TypeName.ShouldBe("CancelOrderHandler");
+        gap.MemberName.ShouldBe("Handle");
+        gap.UncoveredLines.ShouldBe([15], ignoreOrder: true);
     }
 
     [Fact]
@@ -340,6 +340,6 @@ public class CoberturaCoverageParserTests
 
         var gaps = CoberturaCoverageParser.Parse(xml);
 
-        gaps.Single().FilePath.Should().Be("/root/a/src/MyApp/Calculator.cs");
+        gaps.Single().FilePath.ShouldBe("/root/a/src/MyApp/Calculator.cs");
     }
 }

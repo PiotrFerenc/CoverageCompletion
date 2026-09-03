@@ -42,7 +42,7 @@ Generated tests assume the target solution uses:
   `IRequestHandler<TRequest, TResponse>`)
 - [FluentResults](https://github.com/altmann/FluentResults)
   (`Result`/`Result<T>`)
-- xUnit + FluentAssertions + NSubstitute for tests, with integration-style
+- xUnit + Shouldly + NSubstitute for tests, with integration-style
   tests using in-memory/mocked dependencies rather than Testcontainers
 
 `TestPatternFinder` looks for a real, existing test in the target solution
@@ -90,5 +90,5 @@ dotnet test tests/CoverageCompletion.Generation.Tests
 dotnet test tests/CoverageCompletion.Cli.Tests
 ```
 
-FluentAssertions is pinned to `7.x` — `8.x` requires a paid commercial
-license.
+Assertions use [Shouldly](https://github.com/shouldly/shouldly) — chosen specifically to avoid
+FluentAssertions' 8.x paid-commercial-license requirement.

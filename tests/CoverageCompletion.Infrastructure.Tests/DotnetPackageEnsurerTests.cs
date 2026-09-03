@@ -1,5 +1,5 @@
 using CoverageCompletion.Infrastructure.Packages;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Infrastructure.Tests;
 
@@ -41,8 +41,8 @@ public sealed class DotnetPackageEnsurerTests : IDisposable
         await _sut.EnsureRequiredPackagesAsync(TestFilePath, CancellationToken.None);
 
         var content = await File.ReadAllTextAsync(csprojPath);
-        content.Should().Contain("Include=\"FluentAssertions\"");
-        content.Should().Contain("Include=\"NSubstitute\"");
+        content.ShouldContain("Include=\"Shouldly\"");
+        content.ShouldContain("Include=\"NSubstitute\"");
     }
 
     [Fact]
@@ -50,13 +50,13 @@ public sealed class DotnetPackageEnsurerTests : IDisposable
     {
         var csprojPath = CreateCsproj(MinimalCsproj.Replace(
             "<PropertyGroup>",
-            "<ItemGroup><PackageReference Include=\"FluentAssertions\" Version=\"7.0.0\" /></ItemGroup>\n  <PropertyGroup>"));
+            "<ItemGroup><PackageReference Include=\"Shouldly\" Version=\"4.2.1\" /></ItemGroup>\n  <PropertyGroup>"));
 
         await _sut.EnsureRequiredPackagesAsync(TestFilePath, CancellationToken.None);
 
         var content = await File.ReadAllTextAsync(csprojPath);
-        CountOccurrences(content, "Include=\"FluentAssertions\"").Should().Be(1);
-        content.Should().Contain("Include=\"NSubstitute\"");
+        CountOccurrences(content, "Include=\"Shouldly\"").ShouldBe(1);
+        content.ShouldContain("Include=\"NSubstitute\"");
     }
 
     private static int CountOccurrences(string content, string substring) =>
@@ -67,13 +67,13 @@ public sealed class DotnetPackageEnsurerTests : IDisposable
     {
         var original = MinimalCsproj.Replace(
             "<PropertyGroup>",
-            "<ItemGroup>\n    <PackageReference Include=\"FluentAssertions\" Version=\"7.0.0\" />\n"
+            "<ItemGroup>\n    <PackageReference Include=\"Shouldly\" Version=\"4.2.1\" />\n"
                 + "    <PackageReference Include=\"NSubstitute\" Version=\"5.1.0\" />\n  </ItemGroup>\n  <PropertyGroup>");
         var csprojPath = CreateCsproj(original);
 
         await _sut.EnsureRequiredPackagesAsync(TestFilePath, CancellationToken.None);
 
         var content = await File.ReadAllTextAsync(csprojPath);
-        content.Should().Be(original);
+        content.ShouldBe(original);
     }
 }

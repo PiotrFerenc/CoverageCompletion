@@ -1,7 +1,7 @@
 using System.Net;
 using CoverageCompletion.Contracts;
 using CoverageCompletion.Generation;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Generation.Tests;
 
@@ -60,8 +60,8 @@ public class TestGeneratorTests : IDisposable
 
         var result = await MakeGenerator().GenerateAsync(gap, _solutionRoot, CancellationToken.None);
 
-        result.FilePath.Should().Be(Path.Combine(testsDir, "OrderHandlerTests.cs"));
-        result.Content.Should().Be("public class GeneratedTests {}");
+        result.FilePath.ShouldBe(Path.Combine(testsDir, "OrderHandlerTests.cs"));
+        result.Content.ShouldBe("public class GeneratedTests {}");
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class TestGeneratorTests : IDisposable
 
         var result = await MakeGenerator().GenerateAsync(gap, slnPath, CancellationToken.None);
 
-        result.FilePath.Should().Be(Path.Combine(testsDir, "OrderHandlerTests.cs"));
+        result.FilePath.ShouldBe(Path.Combine(testsDir, "OrderHandlerTests.cs"));
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class TestGeneratorTests : IDisposable
 
         var result = await MakeGenerator().GenerateAsync(gap, _solutionRoot, CancellationToken.None);
 
-        result.FilePath.Should().Be(Path.Combine(testsDir, "OrderHandlerTests2.cs"));
+        result.FilePath.ShouldBe(Path.Combine(testsDir, "OrderHandlerTests2.cs"));
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class TestGeneratorTests : IDisposable
 
         var result = await MakeGenerator().RegenerateAsync(gap, previous, "CS0103 error", CancellationToken.None);
 
-        result.FilePath.Should().Be(previous.FilePath);
-        result.Content.Should().Be("public class GeneratedTests {}");
+        result.FilePath.ShouldBe(previous.FilePath);
+        result.Content.ShouldBe("public class GeneratedTests {}");
     }
 }

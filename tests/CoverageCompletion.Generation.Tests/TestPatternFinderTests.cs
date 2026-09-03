@@ -1,6 +1,6 @@
 using CoverageCompletion.Contracts;
 using CoverageCompletion.Generation;
-using FluentAssertions;
+using Shouldly;
 
 namespace CoverageCompletion.Generation.Tests;
 
@@ -49,7 +49,7 @@ public class TestPatternFinderTests : IDisposable
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().Be(expected);
+        result.ShouldBe(expected);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class TestPatternFinderTests : IDisposable
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().Be(fallbackContent);
+        result.ShouldBe(fallbackContent);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class TestPatternFinderTests : IDisposable
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class TestPatternFinderTests : IDisposable
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public class TestPatternFinderTests : IDisposable
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class TestPatternFinderTests : IDisposable
     {
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class TestPatternFinderTests : IDisposable
 
         var result = new TestPatternFinder().FindExampleTest(MakeGap(), _solutionRoot);
 
-        result.Should().BeNull();
+        result.ShouldBeNull();
     }
 
     [Fact]
@@ -175,8 +175,8 @@ public class TestPatternFinderTests : IDisposable
 
         var directories = new TestPatternFinder().FindTestProjectDirectories(_solutionRoot);
 
-        directories.Should().Contain(byName);
-        directories.Should().NotContain(srcDir);
+        directories.ShouldContain(byName);
+        directories.ShouldNotContain(srcDir);
     }
 
     [Fact]
@@ -197,6 +197,6 @@ public class TestPatternFinderTests : IDisposable
 
         var directories = new TestPatternFinder().FindTestProjectDirectories(slnPath);
 
-        directories.Should().Contain(byName);
+        directories.ShouldContain(byName);
     }
 }
