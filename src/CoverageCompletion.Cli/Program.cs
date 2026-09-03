@@ -1,3 +1,4 @@
+using System.Reflection;
 using CoverageCompletion.Cli;
 using CoverageCompletion.Contracts;
 using CoverageCompletion.Generation;
@@ -6,7 +7,20 @@ using CoverageCompletion.Infrastructure.Coverage;
 using CoverageCompletion.Infrastructure.Git;
 using CoverageCompletion.Infrastructure.Packages;
 using CoverageCompletion.Infrastructure.Reporting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+
+// OpenAiClient reads OPENAI_API_KEY/OPENAI_MODEL via Environment.GetEnvironmentVariable, so
+// bridge them in from `dotnet user-secrets` too (local dev convenience) without touching that
+// simple contract - an explicit env var, if already set, always wins.
+var userSecrets = new ConfigurationBuilder().AddUserSecrets(Assembly.GetExecutingAssembly()).Build();
+foreach (var key in new[] { "OPENAI_API_KEY", "OPENAI_MODEL" })
+{
+    if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)) && !string.IsNullOrWhiteSpace(userSecrets[key]))
+    {
+        Environment.SetEnvironmentVariable(key, userSecrets[key]);
+    }
+}
 
 if (args.Length < 1)
 {
