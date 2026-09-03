@@ -82,6 +82,18 @@ public sealed class FakeSummaryReporter : ISummaryReporter
     }
 }
 
+public sealed class FakeTestProjectPackageEnsurer(Action<string>? onEnsure = null) : ITestProjectPackageEnsurer
+{
+    public List<string> EnsuredFilePaths { get; } = [];
+
+    public Task EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct)
+    {
+        EnsuredFilePaths.Add(testFilePath);
+        onEnsure?.Invoke(testFilePath);
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class FakeTestGenerator(Func<CoverageGap, string> filePathForGap) : ITestGenerator
 {
     public int RegenerateCallCount { get; private set; }

@@ -4,6 +4,7 @@ using CoverageCompletion.Generation;
 using CoverageCompletion.Infrastructure.Build;
 using CoverageCompletion.Infrastructure.Coverage;
 using CoverageCompletion.Infrastructure.Git;
+using CoverageCompletion.Infrastructure.Packages;
 using CoverageCompletion.Infrastructure.Reporting;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -34,6 +35,7 @@ services.AddSingleton<ICoverageAnalyzer, CoverageAnalyzer>();
 services.AddSingleton<IBuildTestRunner, BuildTestRunner>();
 services.AddSingleton<IGitCommitter, GitCommitter>();
 services.AddSingleton<ISummaryReporter, SummaryReporter>();
+services.AddSingleton<ITestProjectPackageEnsurer, DotnetPackageEnsurer>();
 services.AddSingleton<TestPatternFinder>();
 services.AddSingleton<PromptBuilder>();
 services.AddSingleton<ITestGenerator, TestGenerator>();

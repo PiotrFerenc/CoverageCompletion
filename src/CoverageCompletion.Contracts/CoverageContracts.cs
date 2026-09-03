@@ -53,3 +53,8 @@ public interface ISummaryReporter
 
     Task WriteAsync(string path, CancellationToken ct);
 }
+
+public interface ITestProjectPackageEnsurer
+{
+    Task EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct);
+}
