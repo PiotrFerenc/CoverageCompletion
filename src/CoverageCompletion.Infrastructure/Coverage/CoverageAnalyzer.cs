@@ -40,7 +40,13 @@ public sealed class CoverageAnalyzer : ICoverageAnalyzer
         var xml = await File.ReadAllTextAsync(coverageFile, ct);
         var gaps = CoberturaCoverageParser.Parse(xml);
 
+        // Source generators (e.g. Mediator's) can appear as <class> entries in the Cobertura
+        // report with a filename Roslyn assigns them internally, even though no such file is
+        // ever written to disk (EmitCompilerGeneratedFiles defaults to off). There's no real
+        // source to read or write a test against for those, so drop them here rather than
+        // crashing downstream when nothing at that path exists.
         return gaps
+            .Where(gap => File.Exists(Path.GetFullPath(gap.FilePath, solutionDir)))
             .Select(gap => gap with { ProjectPath = FindNearestCsproj(gap.FilePath, solutionDir) })
             .ToList();
     }
@@ -54,7 +60,10 @@ public sealed class CoverageAnalyzer : ICoverageAnalyzer
         var dir = Path.GetDirectoryName(Path.GetFullPath(filePath, fallbackDir));
         while (dir is not null)
         {
-            var csproj = Directory.GetFiles(dir, "*.csproj").FirstOrDefault();
+            // Belt-and-braces: callers are expected to only pass paths backed by a real file
+            // (see the File.Exists filter above), but don't let a missing directory anywhere
+            // in the walk-up turn into an unhandled crash regardless.
+            var csproj = Directory.Exists(dir) ? Directory.GetFiles(dir, "*.csproj").FirstOrDefault() : null;
             if (csproj is not null)
             {
                 return csproj;
