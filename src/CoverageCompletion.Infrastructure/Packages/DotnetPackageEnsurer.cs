@@ -13,10 +13,11 @@ public sealed class DotnetPackageEnsurer : ITestProjectPackageEnsurer
 {
     private static readonly string[] RequiredPackages = ["FluentAssertions", "NSubstitute"];
 
-    public async Task EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct)
+    public async Task<string?> EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct)
     {
         var csprojPath = FindNearestCsproj(testFilePath);
         var csprojContent = await File.ReadAllTextAsync(csprojPath, ct);
+        var changed = false;
 
         foreach (var package in RequiredPackages)
         {
@@ -32,7 +33,11 @@ public sealed class DotnetPackageEnsurer : ITestProjectPackageEnsurer
                 throw new InvalidOperationException(
                     $"dotnet add {csprojPath} package {package} failed with exit code {result.ExitCode}: {result.StandardError.Trim()}");
             }
+
+            changed = true;
         }
+
+        return changed ? csprojPath : null;
     }
 
     private static string FindNearestCsproj(string filePath)

@@ -189,6 +189,34 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task PackageEnsurer_WhenItModifiesCsproj_CommitsCsprojAlongsideGeneratedTestFile()
+    {
+        // Regression test: a real-key end-to-end run showed the package ensurer's csproj edit
+        // (adding FluentAssertions/NSubstitute) only ever existed in the ephemeral worktree - the
+        // commit only ever included the generated test file, so a fresh checkout of that commit
+        // failed to build. The ensurer's return value must now flow into the same commit.
+        var gap = Gap("Widget");
+        var worktreeManager = new FakeWorktreeManager(_session);
+        var committer = new FakeGitCommitter();
+        var reporter = new FakeSummaryReporter();
+        var testGenerator = new FakeTestGenerator(FilePathFor);
+        var csprojPath = Path.Combine(_worktreePath, "Tests", "Tests.csproj");
+        var packageEnsurer = new FakeTestProjectPackageEnsurer(modifiedCsprojPath: csprojPath);
+        var buildRunner = new FakeBuildTestRunner([Ok()], [Ok()]);
+
+        var runner = new CoverageCompletionRunner(
+            worktreeManager, new FakeCoverageAnalyzer([gap]), buildRunner, committer, reporter, testGenerator,
+            packageEnsurer: packageEnsurer);
+
+        var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
+
+        exitCode.Should().Be(0);
+        committer.Commits.Should().ContainSingle();
+        committer.Commits[0].RelativeFilePaths.Should().BeEquivalentTo(
+            [Path.GetRelativePath(_worktreePath, FilePathFor(gap)), Path.GetRelativePath(_worktreePath, csprojPath)]);
+    }
+
+    [Fact]
     public async Task Cancellation_MidLoop_StopsProcessingButStillWritesSummaryAndRemovesWorktree()
     {
         var succeeding = Gap("Widget");

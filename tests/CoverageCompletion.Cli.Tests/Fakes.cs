@@ -54,11 +54,11 @@ public sealed class FakeBuildTestRunner(
 
 public sealed class FakeGitCommitter : IGitCommitter
 {
-    public List<(string WorktreePath, string RelativeFilePath, string Message)> Commits { get; } = [];
+    public List<(string WorktreePath, IReadOnlyList<string> RelativeFilePaths, string Message)> Commits { get; } = [];
 
-    public Task<string> CommitFileAsync(string worktreePath, string relativeFilePath, string message, CancellationToken ct)
+    public Task<string> CommitFilesAsync(string worktreePath, IReadOnlyList<string> relativeFilePaths, string message, CancellationToken ct)
     {
-        Commits.Add((worktreePath, relativeFilePath, message));
+        Commits.Add((worktreePath, relativeFilePaths, message));
         return Task.FromResult($"sha-{Commits.Count}");
     }
 }
@@ -82,15 +82,15 @@ public sealed class FakeSummaryReporter : ISummaryReporter
     }
 }
 
-public sealed class FakeTestProjectPackageEnsurer(Action<string>? onEnsure = null) : ITestProjectPackageEnsurer
+public sealed class FakeTestProjectPackageEnsurer(Action<string>? onEnsure = null, string? modifiedCsprojPath = null) : ITestProjectPackageEnsurer
 {
     public List<string> EnsuredFilePaths { get; } = [];
 
-    public Task EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct)
+    public Task<string?> EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct)
     {
         EnsuredFilePaths.Add(testFilePath);
         onEnsure?.Invoke(testFilePath);
-        return Task.CompletedTask;
+        return Task.FromResult(modifiedCsprojPath);
     }
 }
 

@@ -33,7 +33,7 @@ public interface IBuildTestRunner
 
 public interface IGitCommitter
 {
-    Task<string> CommitFileAsync(string worktreePath, string relativeFilePath, string message, CancellationToken ct);
+    Task<string> CommitFilesAsync(string worktreePath, IReadOnlyList<string> relativeFilePaths, string message, CancellationToken ct);
 }
 
 public record GeneratedTest(string FilePath, string Content);
@@ -56,5 +56,10 @@ public interface ISummaryReporter
 
 public interface ITestProjectPackageEnsurer
 {
-    Task EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct);
+    /// <summary>
+    /// Ensures the test project nearest <paramref name="testFilePath"/> has the required NuGet
+    /// packages. Returns the path to the .csproj it modified (so the caller can commit that
+    /// change alongside the generated test file), or null if nothing needed to change.
+    /// </summary>
+    Task<string?> EnsureRequiredPackagesAsync(string testFilePath, CancellationToken ct);
 }

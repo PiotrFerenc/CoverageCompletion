@@ -107,9 +107,10 @@ public sealed class CoverageCompletionRunner(
             return;
         }
 
+        string? modifiedCsprojPath = null;
         if (packageEnsurer is not null)
         {
-            await packageEnsurer.EnsureRequiredPackagesAsync(generated.FilePath, ct);
+            modifiedCsprojPath = await packageEnsurer.EnsureRequiredPackagesAsync(generated.FilePath, ct);
         }
 
         for (var attempt = 1; attempt <= _options.MaxAttempts; attempt++)
@@ -159,9 +160,17 @@ public sealed class CoverageCompletionRunner(
                 continue;
             }
 
-            var relativeFilePath = Path.GetRelativePath(session.WorktreePath, generated.FilePath);
-            var sha = await committer.CommitFileAsync(
-                session.WorktreePath, relativeFilePath, $"test: cover {gap.TypeName}.{gap.MemberName}", ct);
+            var relativeFilePaths = new List<string> { Path.GetRelativePath(session.WorktreePath, generated.FilePath) };
+            if (modifiedCsprojPath is not null)
+            {
+                // The package ensurer's csproj edit lives only in this worktree until it's
+                // committed alongside the test file that actually needs it - otherwise the
+                // generated test would fail to build on a fresh checkout of this commit.
+                relativeFilePaths.Add(Path.GetRelativePath(session.WorktreePath, modifiedCsprojPath));
+            }
+
+            var sha = await committer.CommitFilesAsync(
+                session.WorktreePath, relativeFilePaths, $"test: cover {gap.TypeName}.{gap.MemberName}", ct);
             reporter.RecordCompleted(gap, sha);
             Console.WriteLine("  -> committed");
             return;
