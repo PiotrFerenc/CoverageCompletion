@@ -272,6 +272,50 @@ public class CoberturaCoverageParserTests
     }
 
     [Fact]
+    public void Parse_AsyncMethodStateMachine_FoldsBackToTheDeclaringMethod()
+    {
+        // Regression test: async methods compile to a nested "Outer/<Method>d__N" state-machine
+        // type, and Cobertura reports the gap against "MoveNext" on that synthetic type. Left
+        // unresolved, TypeName ("CancelOrderHandler/<Handle>d__2") breaks file-path construction
+        // downstream because it contains '/' and '<'/'>' - this must fold back to the real method.
+        const string xml = """
+            <coverage>
+              <packages>
+                <package name="MyApp">
+                  <classes>
+                    <class name="MyApp.CancelOrderHandler/&lt;Handle&gt;d__2" filename="/repo/src/MyApp/CancelOrderHandler.cs">
+                      <methods>
+                        <method name="MoveNext">
+                          <lines>
+                            <line number="15" hits="0" />
+                          </lines>
+                        </method>
+                        <method name="SetStateMachine">
+                          <lines>
+                            <line number="30" hits="0" />
+                          </lines>
+                        </method>
+                      </methods>
+                      <lines>
+                        <line number="15" hits="0" />
+                        <line number="30" hits="0" />
+                      </lines>
+                    </class>
+                  </classes>
+                </package>
+              </packages>
+            </coverage>
+            """;
+
+        var gaps = CoberturaCoverageParser.Parse(xml);
+
+        var gap = gaps.Should().ContainSingle().Subject;
+        gap.TypeName.Should().Be("CancelOrderHandler");
+        gap.MemberName.Should().Be("Handle");
+        gap.UncoveredLines.Should().BeEquivalentTo([15]);
+    }
+
+    [Fact]
     public void Parse_WithMultipleSourceRoots_FallsBackToTheFirstRoot_WhenNoneResolveToAnExistingFile()
     {
         const string xml = """

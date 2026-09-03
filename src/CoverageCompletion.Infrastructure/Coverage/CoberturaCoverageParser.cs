@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using CoverageCompletion.Contracts;
 
@@ -48,7 +49,13 @@ public static class CoberturaCoverageParser
                     }
 
                     var methodName = (string?)methodElement.Attribute("name") ?? string.Empty;
-                    gaps.Add(new CoverageGap(projectPath, filename, ns, typeName, methodName, uncoveredLines));
+                    var resolved = ResolveCompilerGeneratedMember(typeName, methodName);
+                    if (resolved is null)
+                    {
+                        continue;
+                    }
+
+                    gaps.Add(new CoverageGap(projectPath, filename, ns, resolved.Value.TypeName, resolved.Value.MemberName, uncoveredLines));
                 }
             }
             else
@@ -104,6 +111,29 @@ public static class CoberturaCoverageParser
         }
 
         return Path.Combine(sourceRoots[0], filename);
+    }
+
+    // async/iterator methods compile to a nested state-machine type (Outer/<Method>d__N); the
+    // compiler attributes coverage to "MoveNext" on that synthetic type instead of the real
+    // method. Fold it back to the declaring method so a gap targets real, callable code instead
+    // of a path-breaking synthetic type name.
+    // ponytail: only handles this one compiler-generated shape (async/iterator state machines);
+    // other synthetic nesting (closures, local functions) still surfaces under its raw name.
+    private static readonly Regex StateMachineTypeRegex = new(@"^(?<outer>.+)/<(?<method>[^>]+)>d__\d+$", RegexOptions.Compiled);
+
+    private static (string TypeName, string MemberName)? ResolveCompilerGeneratedMember(string typeName, string methodName)
+    {
+        var match = StateMachineTypeRegex.Match(typeName);
+        if (!match.Success)
+        {
+            return (typeName, methodName);
+        }
+
+        // Only "MoveNext" carries the method body; the rest (SetStateMachine, Current, Dispose,
+        // Reset, ...) is boilerplate with nothing meaningful to generate a test for.
+        return methodName == "MoveNext"
+            ? (match.Groups["outer"].Value, match.Groups["method"].Value)
+            : null;
     }
 
     private static (string Namespace, string TypeName) SplitClassName(string className)
