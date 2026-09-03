@@ -19,13 +19,17 @@ public static class CoberturaCoverageParser
         // declared once near the top of the document - coverlet emits "/" as that root on Linux,
         // which makes filename look like an absolute path with the leading slash stripped off.
         // Resolve it here so callers get a real, directly-usable path instead of a bare fragment.
-        var sourceRoot = document.Root?.Element("sources")?.Element("source")?.Value.Trim();
+        // Cobertura allows more than one <source>; when it's absent entirely, filename is used as-is.
+        var sourceRoots = document.Root?.Element("sources")?.Elements("source")
+            .Select(e => e.Value.Trim())
+            .Where(root => root.Length > 0)
+            .ToList() ?? [];
 
         foreach (var classElement in document.Descendants("class"))
         {
             var className = (string?)classElement.Attribute("name") ?? string.Empty;
             var rawFilename = (string?)classElement.Attribute("filename") ?? string.Empty;
-            var filename = ResolveFilename(rawFilename, sourceRoot);
+            var filename = ResolveFilename(rawFilename, sourceRoots);
             var (ns, typeName) = SplitClassName(className);
 
             // Cobertura's default project path guess: the directory the source file lives in.
@@ -75,10 +79,32 @@ public static class CoberturaCoverageParser
             .ToList();
     }
 
-    private static string ResolveFilename(string filename, string? sourceRoot)
-        => string.IsNullOrEmpty(sourceRoot) || Path.IsPathRooted(filename)
-            ? filename
-            : Path.Combine(sourceRoot, filename);
+    private static string ResolveFilename(string filename, IReadOnlyList<string> sourceRoots)
+    {
+        if (sourceRoots.Count == 0 || Path.IsPathRooted(filename))
+        {
+            return filename;
+        }
+
+        if (sourceRoots.Count == 1)
+        {
+            return Path.Combine(sourceRoots[0], filename);
+        }
+
+        // Multiple <source> roots (e.g. multi-module Cobertura reports): try each in turn and
+        // prefer the one that actually resolves to a real file, falling back to the first root
+        // when none do (e.g. unit tests parsing inline XML with no files backing it on disk).
+        foreach (var root in sourceRoots)
+        {
+            var candidate = Path.Combine(root, filename);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return Path.Combine(sourceRoots[0], filename);
+    }
 
     private static (string Namespace, string TypeName) SplitClassName(string className)
     {

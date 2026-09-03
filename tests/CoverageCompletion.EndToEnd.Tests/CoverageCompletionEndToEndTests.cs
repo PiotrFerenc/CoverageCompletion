@@ -74,6 +74,70 @@ public sealed class CoverageCompletionEndToEndTests : IAsyncLifetime
         summaryContent.Should().Contain("Calculator.Classify", "the summary should mention the gap that got completed");
     }
 
+    /// <summary>
+    /// Two library projects (Sample.Lib.Alpha, Sample.Lib.Beta) sharing one test project, each
+    /// with a single uncovered method. Guards against a real risk in a multi-project solution:
+    /// <see cref="CoverageAnalyzer"/> resolving every <see cref="CoverageGap"/> back to the
+    /// SAME project, or to the wrong one, instead of the csproj the gap's source file actually
+    /// lives under.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "EndToEnd")]
+    public async Task RunAsync_WithTwoLibraryProjects_AssignsEachGapToItsOwnProject_AndCommitsBoth()
+    {
+        // Arrange
+        CreateTwoProjectFixtureRepo(_repoPath);
+        var solutionPath = Path.Combine(_repoPath, "Sample.sln");
+
+        var worktreeManager = new RecordingWorktreeManager(new WorktreeManager());
+        var testGenerator = new TwoProjectFakeTestGenerator();
+        var runner = new CoverageCompletionRunner(
+            worktreeManager,
+            new CoverageAnalyzer(),
+            new BuildTestRunner(),
+            new GitCommitter(),
+            new SummaryReporter(),
+            testGenerator);
+
+        // Act
+        var exitCode = await runner.RunAsync(_repoPath, solutionPath, CancellationToken.None);
+
+        // Assert
+        exitCode.Should().Be(0, "the run should complete without cancellation or an unhandled failure");
+
+        testGenerator.GeneratedGaps.Should().HaveCount(2, "both Widget.Classify and Gadget.Sign should have been detected as gaps");
+
+        var widgetGap = testGenerator.GeneratedGaps.Should().ContainSingle(g => g.TypeName == "Widget").Which;
+        Path.GetFileName(widgetGap.ProjectPath).Should().Be("Sample.Lib.Alpha.csproj",
+            "the Widget gap's source file lives under Sample.Lib.Alpha, not Sample.Lib.Beta or the test project");
+        Path.GetFileName(Path.GetDirectoryName(widgetGap.FilePath)).Should().Be("Sample.Lib.Alpha");
+
+        var gadgetGap = testGenerator.GeneratedGaps.Should().ContainSingle(g => g.TypeName == "Gadget").Which;
+        Path.GetFileName(gadgetGap.ProjectPath).Should().Be("Sample.Lib.Beta.csproj",
+            "the Gadget gap's source file lives under Sample.Lib.Beta, not Sample.Lib.Alpha or the test project");
+        Path.GetFileName(Path.GetDirectoryName(gadgetGap.FilePath)).Should().Be("Sample.Lib.Beta");
+
+        worktreeManager.LastWorktreePath.Should().NotBeNull("the runner must have created a worktree");
+        Directory.Exists(worktreeManager.LastWorktreePath).Should().BeFalse(
+            "the runner removes the worktree directory in its finally block");
+
+        var branchListing = RunGit(_repoPath, "branch", "--list", "coverage/session-*");
+        var branchName = branchListing.Trim().TrimStart('*', ' ');
+
+        var branchLog = RunGit(_repoPath, "log", branchName, "--oneline");
+        var commitCount = branchLog.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+        commitCount.Should().Be(3, "the initial commit plus one generated-test commit per gap");
+
+        var worktreeListing = RunGit(_repoPath, "worktree", "list");
+        worktreeListing.Should().NotContain("coverage-worktrees", "`git worktree remove` should have dropped the entry");
+
+        var summaryFiles = Directory.GetFiles(_repoPath, "coverage-completion-summary-*.md");
+        summaryFiles.Should().ContainSingle("the runner always writes exactly one summary file per session");
+        var summaryContent = await File.ReadAllTextAsync(summaryFiles[0]);
+        summaryContent.Should().Contain("Widget.Classify");
+        summaryContent.Should().Contain("Gadget.Sign");
+    }
+
     // ---- fixture construction -------------------------------------------------------------
 
     private static void CreateFixtureRepo(string repoPath)
@@ -195,6 +259,170 @@ public sealed class CoverageCompletionEndToEndTests : IAsyncLifetime
         EndGlobal
         """;
 
+    private static void CreateTwoProjectFixtureRepo(string repoPath)
+    {
+        var alphaDir = Path.Combine(repoPath, "Sample.Lib.Alpha");
+        var betaDir = Path.Combine(repoPath, "Sample.Lib.Beta");
+        var testsDir = Path.Combine(repoPath, "Sample.Tests");
+        Directory.CreateDirectory(alphaDir);
+        Directory.CreateDirectory(betaDir);
+        Directory.CreateDirectory(testsDir);
+
+        File.WriteAllText(Path.Combine(alphaDir, "Sample.Lib.Alpha.csproj"), SampleLibCsprojNoRefs);
+        File.WriteAllText(Path.Combine(alphaDir, "Widget.cs"), WidgetSource);
+        File.WriteAllText(Path.Combine(betaDir, "Sample.Lib.Beta.csproj"), SampleLibCsprojNoRefs);
+        File.WriteAllText(Path.Combine(betaDir, "Gadget.cs"), GadgetSource);
+        File.WriteAllText(Path.Combine(testsDir, "Sample.Tests.csproj"), SampleTestsCsproj);
+        File.WriteAllText(Path.Combine(testsDir, "WidgetTests.cs"), WidgetTestsSource);
+        File.WriteAllText(Path.Combine(testsDir, "GadgetTests.cs"), GadgetTestsSource);
+        File.WriteAllText(Path.Combine(repoPath, "Sample.sln"), TwoProjectSampleSln);
+
+        RunGit(repoPath, "init", "-q");
+        RunGit(repoPath, "config", "user.email", "e2e@example.com");
+        RunGit(repoPath, "config", "user.name", "E2E Test");
+        RunGit(repoPath, "add", "-A");
+        RunGit(repoPath, "commit", "-q", "-m", "initial commit");
+    }
+
+    private const string SampleLibCsprojNoRefs = """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFramework>net8.0</TargetFramework>
+            <ImplicitUsings>enable</ImplicitUsings>
+            <Nullable>enable</Nullable>
+          </PropertyGroup>
+        </Project>
+        """;
+
+    // Classify() is the deliberate gap in Alpha: Double() is covered by WidgetTests, Classify() is not.
+    private const string WidgetSource = """
+        namespace Sample.Lib.Alpha;
+
+        public class Widget
+        {
+            public int Double(int a) => a * 2;
+
+            public int Classify(int n)
+            {
+                if (n > 0) return 1;
+                if (n < 0) return -1;
+                return 0;
+            }
+        }
+        """;
+
+    // Sign() is the deliberate gap in Beta: Square() is covered by GadgetTests, Sign() is not.
+    private const string GadgetSource = """
+        namespace Sample.Lib.Beta;
+
+        public class Gadget
+        {
+            public int Square(int a) => a * a;
+
+            public int Sign(int n)
+            {
+                if (n > 0) return 1;
+                if (n < 0) return -1;
+                return 0;
+            }
+        }
+        """;
+
+    private const string SampleTestsCsproj = """
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <TargetFramework>net8.0</TargetFramework>
+            <ImplicitUsings>enable</ImplicitUsings>
+            <Nullable>enable</Nullable>
+            <IsPackable>false</IsPackable>
+            <RollForward>Major</RollForward>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.0" />
+            <PackageReference Include="xunit" Version="2.4.2" />
+            <PackageReference Include="xunit.runner.visualstudio" Version="2.4.5">
+              <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+              <PrivateAssets>all</PrivateAssets>
+            </PackageReference>
+            <PackageReference Include="coverlet.collector" Version="6.0.0">
+              <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+              <PrivateAssets>all</PrivateAssets>
+            </PackageReference>
+          </ItemGroup>
+          <ItemGroup>
+            <ProjectReference Include="..\Sample.Lib.Alpha\Sample.Lib.Alpha.csproj" />
+            <ProjectReference Include="..\Sample.Lib.Beta\Sample.Lib.Beta.csproj" />
+          </ItemGroup>
+        </Project>
+        """;
+
+    private const string WidgetTestsSource = """
+        using Xunit;
+        using Sample.Lib.Alpha;
+
+        namespace Sample.Tests;
+
+        public class WidgetTests
+        {
+            [Fact]
+            public void Double_ReturnsDoubledValue()
+            {
+                var widget = new Widget();
+                Assert.Equal(10, widget.Double(5));
+            }
+        }
+        """;
+
+    private const string GadgetTestsSource = """
+        using Xunit;
+        using Sample.Lib.Beta;
+
+        namespace Sample.Tests;
+
+        public class GadgetTests
+        {
+            [Fact]
+            public void Square_ReturnsSquaredValue()
+            {
+                var gadget = new Gadget();
+                Assert.Equal(25, gadget.Square(5));
+            }
+        }
+        """;
+
+    private const string TwoProjectSampleSln = """
+        Microsoft Visual Studio Solution File, Format Version 12.00
+        # Visual Studio Version 17
+        VisualStudioVersion = 17.0.31903.59
+        MinimumVisualStudioVersion = 10.0.40219.1
+        Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample.Lib.Alpha", "Sample.Lib.Alpha\Sample.Lib.Alpha.csproj", "{C3333333-3333-3333-3333-333333333333}"
+        EndProject
+        Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample.Lib.Beta", "Sample.Lib.Beta\Sample.Lib.Beta.csproj", "{D4444444-4444-4444-4444-444444444444}"
+        EndProject
+        Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sample.Tests", "Sample.Tests\Sample.Tests.csproj", "{E5555555-5555-5555-5555-555555555555}"
+        EndProject
+        Global
+        	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+        		Debug|Any CPU = Debug|Any CPU
+        		Release|Any CPU = Release|Any CPU
+        	EndGlobalSection
+        	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+        		{C3333333-3333-3333-3333-333333333333}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        		{C3333333-3333-3333-3333-333333333333}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        		{C3333333-3333-3333-3333-333333333333}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        		{C3333333-3333-3333-3333-333333333333}.Release|Any CPU.Build.0 = Release|Any CPU
+        		{D4444444-4444-4444-4444-444444444444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        		{D4444444-4444-4444-4444-444444444444}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        		{D4444444-4444-4444-4444-444444444444}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        		{D4444444-4444-4444-4444-444444444444}.Release|Any CPU.Build.0 = Release|Any CPU
+        		{E5555555-5555-5555-5555-555555555555}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        		{E5555555-5555-5555-5555-555555555555}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        		{E5555555-5555-5555-5555-555555555555}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        		{E5555555-5555-5555-5555-555555555555}.Release|Any CPU.Build.0 = Release|Any CPU
+        	EndGlobalSection
+        EndGlobal
+        """;
+
     // ---- process / filesystem helpers ------------------------------------------------------
 
     private static string RunGit(string workingDirectory, params string[] arguments)
@@ -310,6 +538,79 @@ public sealed class CoverageCompletionEndToEndTests : IAsyncLifetime
                     }
                 }
                 """;
+
+            return new GeneratedTest(filePath, content);
+        }
+    }
+
+    /// <summary>
+    /// Stands in for the real OpenAI-backed <c>TestGenerator</c> for the two-project fixture.
+    /// Records every <see cref="CoverageGap"/> it was asked to cover (so the test can assert on
+    /// <see cref="CoverageGap.ProjectPath"/>/<see cref="CoverageGap.FilePath"/> after the run) and
+    /// always emits the same compiling, passing xUnit test for each of the two known gap shapes.
+    /// </summary>
+    private sealed class TwoProjectFakeTestGenerator : ITestGenerator
+    {
+        public List<CoverageGap> GeneratedGaps { get; } = [];
+
+        public Task<GeneratedTest> GenerateAsync(CoverageGap gap, string solutionPath, CancellationToken ct)
+        {
+            GeneratedGaps.Add(gap);
+
+            var solutionDir = Path.GetDirectoryName(solutionPath)!;
+            var testProjectDir = Path.Combine(solutionDir, "Sample.Tests");
+            var filePath = Path.Combine(testProjectDir, $"{gap.TypeName}GeneratedTests.cs");
+            return Task.FromResult(Build(gap, filePath));
+        }
+
+        public Task<GeneratedTest> RegenerateAsync(CoverageGap gap, GeneratedTest previous, string buildError, CancellationToken ct)
+            => Task.FromResult(Build(gap, previous.FilePath));
+
+        private static GeneratedTest Build(CoverageGap gap, string filePath)
+        {
+            var content = (gap.TypeName, gap.MemberName) switch
+            {
+                ("Widget", "Classify") => """
+                    using Xunit;
+                    using Sample.Lib.Alpha;
+
+                    namespace Sample.Tests;
+
+                    public class WidgetGeneratedTests
+                    {
+                        [Theory]
+                        [InlineData(5, 1)]
+                        [InlineData(-5, -1)]
+                        [InlineData(0, 0)]
+                        public void Classify_ReturnsExpectedSign(int input, int expected)
+                        {
+                            var widget = new Widget();
+                            Assert.Equal(expected, widget.Classify(input));
+                        }
+                    }
+                    """,
+                ("Gadget", "Sign") => """
+                    using Xunit;
+                    using Sample.Lib.Beta;
+
+                    namespace Sample.Tests;
+
+                    public class GadgetGeneratedTests
+                    {
+                        [Theory]
+                        [InlineData(5, 1)]
+                        [InlineData(-5, -1)]
+                        [InlineData(0, 0)]
+                        public void Sign_ReturnsExpectedSign(int input, int expected)
+                        {
+                            var gadget = new Gadget();
+                            Assert.Equal(expected, gadget.Sign(input));
+                        }
+                    }
+                    """,
+                _ => throw new InvalidOperationException(
+                    $"TwoProjectFakeTestGenerator only knows how to cover Widget.Classify and Gadget.Sign, got {gap.TypeName}.{gap.MemberName}."),
+            };
 
             return new GeneratedTest(filePath, content);
         }
