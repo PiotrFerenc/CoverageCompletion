@@ -65,6 +65,39 @@ public class TestGeneratorTests : IDisposable
     }
 
     [Fact]
+    public async Task GenerateAsync_GivenSlnFilePathNotDirectory_StillPlacesTestFileInTestProject()
+    {
+        // Regression test: CoverageCompletionRunner always passes the .sln FILE path, not its
+        // directory, as `solutionPath`. See TestPatternFinderTests for the root cause this guards
+        // against (FindTestProjectDirectories used to require a directory and silently found
+        // nothing for a file path, so this used to fall back to writing the generated test into
+        // the SOURCE project's directory instead of the test project's).
+        var srcDir = Path.Combine(_solutionRoot, "src", "Foo");
+        Directory.CreateDirectory(srcDir);
+        var sourceFile = Path.Combine(srcDir, "OrderHandler.cs");
+        File.WriteAllText(sourceFile, "public class OrderHandler {}");
+
+        var testsDir = Path.Combine(_solutionRoot, "tests", "Foo.Tests");
+        Directory.CreateDirectory(testsDir);
+        File.WriteAllText(Path.Combine(testsDir, "Foo.Tests.csproj"), "<Project></Project>");
+
+        var slnPath = Path.Combine(_solutionRoot, "Solution.sln");
+        File.WriteAllText(slnPath, "Microsoft Visual Studio Solution File, Format Version 12.00");
+
+        var gap = new CoverageGap(
+            ProjectPath: Path.Combine(srcDir, "Foo.csproj"),
+            FilePath: sourceFile,
+            Namespace: "Foo",
+            TypeName: "OrderHandler",
+            MemberName: "Handle",
+            UncoveredLines: new[] { 1 });
+
+        var result = await MakeGenerator().GenerateAsync(gap, slnPath, CancellationToken.None);
+
+        result.FilePath.Should().Be(Path.Combine(testsDir, "OrderHandlerTests.cs"));
+    }
+
+    [Fact]
     public async Task GenerateAsync_ExistingTestFile_AppendsSuffixToAvoidCollision()
     {
         var srcDir = Path.Combine(_solutionRoot, "src", "Foo");

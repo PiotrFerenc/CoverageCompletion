@@ -178,4 +178,25 @@ public class TestPatternFinderTests : IDisposable
         directories.Should().Contain(byName);
         directories.Should().NotContain(srcDir);
     }
+
+    [Fact]
+    public void FindTestProjectDirectories_AcceptsSlnFilePathNotJustDirectory()
+    {
+        // Regression test: CoverageCompletionRunner always calls this with the path to the .sln
+        // FILE (never its containing directory). A real-key end-to-end run against a Mediator
+        // fixture showed the original `Directory.Exists(solutionPath)` guard silently returned
+        // an empty list for every real invocation - FindExampleTest never found a style pattern,
+        // and TestGenerator.BuildTestFilePath fell back to writing generated tests into the
+        // SOURCE project's own directory instead of the test project's, which then made
+        // DotnetPackageEnsurer add FluentAssertions to the wrong .csproj and break the build for
+        // the whole retry loop. Unit tests never caught this because they all passed a bare
+        // directory, not a .sln file path.
+        var byName = CreateTestProject("Foo.Tests");
+        var slnPath = Path.Combine(_solutionRoot, "Solution.sln");
+        File.WriteAllText(slnPath, "Microsoft Visual Studio Solution File, Format Version 12.00");
+
+        var directories = new TestPatternFinder().FindTestProjectDirectories(slnPath);
+
+        directories.Should().Contain(byName);
+    }
 }

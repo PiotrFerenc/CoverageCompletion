@@ -72,14 +72,18 @@ public class TestPatternFinder
     /// </summary>
     public IReadOnlyList<string> FindTestProjectDirectories(string solutionPath)
     {
-        if (!Directory.Exists(solutionPath))
+        // The real caller (CoverageCompletionRunner) always passes the path to the .sln FILE, not
+        // its directory - resolve to the containing directory in that case. Tests that pass a bare
+        // directory keep working too.
+        var searchRoot = File.Exists(solutionPath) ? Path.GetDirectoryName(solutionPath) : solutionPath;
+        if (searchRoot is null || !Directory.Exists(searchRoot))
         {
             return Array.Empty<string>();
         }
 
         var result = new List<string>();
 
-        foreach (var csproj in Directory.EnumerateFiles(solutionPath, "*.csproj", SearchOption.AllDirectories))
+        foreach (var csproj in Directory.EnumerateFiles(searchRoot, "*.csproj", SearchOption.AllDirectories))
         {
             var dir = Path.GetDirectoryName(csproj)!;
             var isByName = TestDirSuffixes.Any(suffix => dir.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
