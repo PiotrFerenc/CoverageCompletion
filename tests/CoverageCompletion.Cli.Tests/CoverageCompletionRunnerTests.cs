@@ -13,7 +13,7 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
     public CoverageCompletionRunnerTests()
     {
         _solutionPath = Path.Combine(_repoPath, "Solution.sln");
-        _session = new WorktreeSession(_repoPath, _worktreePath, "coverage/branch-1");
+        _session = new WorktreeSession(_repoPath, _worktreePath, "coverage/branch-1", "main");
     }
 
     public void Dispose()
@@ -250,5 +250,26 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
         committer.Commits.Should().ContainSingle();
         worktreeManager.RemoveCallCount.Should().Be(1);
         reporter.WriteCallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task BranchMergerProvided_MergesSessionBranchIntoNewBranchFromBase_BeforeRemovingTheWorktree()
+    {
+        var gap = Gap("Widget");
+        var worktreeManager = new FakeWorktreeManager(_session);
+        var committer = new FakeGitCommitter();
+        var reporter = new FakeSummaryReporter();
+        var testGenerator = new FakeTestGenerator(FilePathFor);
+        var buildRunner = new FakeBuildTestRunner([Ok()], [Ok()]);
+        var branchMerger = new FakeBranchMerger(new MergeOutcome("coverage/merged-1", "/tmp/whatever", HasConflicts: false, "Fast-forward"));
+
+        var runner = new CoverageCompletionRunner(
+            worktreeManager, new FakeCoverageAnalyzer([gap]), buildRunner, committer, reporter, testGenerator,
+            branchMerger: branchMerger);
+
+        var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
+
+        exitCode.Should().Be(0);
+        branchMerger.Calls.Should().ContainSingle().Which.Should().Be((_repoPath, _session.BaseBranch, _session.BranchName));
     }
 }

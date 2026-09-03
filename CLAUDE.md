@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-CoverageCompletion — a .NET 8 console tool that, given the path to a target `.sln`,
+CoverageCompletion — a .NET 10 console tool that, given the path to a target `.sln`,
 measures code coverage, generates missing unit tests via an LLM (OpenAI), builds and
 runs them, retries with the build/test error fed back to the LLM on failure, and
 commits each successfully-passing test file. It operates on the target solution
@@ -34,17 +34,14 @@ OPENAI_API_KEY=sk-... dotnet run --project src/CoverageCompletion.Cli -- /path/t
 `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`, default `gpt-4.1`) must be set in the
 environment before running the Cli — never hardcode it or pass it via a config file.
 
-**Runtime note for this sandbox specifically**: only .NET runtimes 6/7/10 are installed
-here, not 8.0.x, even though all projects target `net8.0`. `dotnet build` works fine
-(SDK 10 builds net8.0 targets natively), but `dotnet run`/`dotnet test` need a roll-forward
-to launch:
-```bash
-DOTNET_ROLL_FORWARD=LatestMajor dotnet test tests/CoverageCompletion.Infrastructure.Tests
-```
-`tests/CoverageCompletion.Infrastructure.Tests.csproj` already sets `<RollForward>Major</RollForward>`
-in its own `.csproj` for this reason; other projects don't have it, so pass the env var
-when running them directly in this environment. This is a quirk of this particular
-sandbox's dotnet package setup, not something the app depends on.
+All projects (`src/` and `tests/`) target `net10.0`, matching this sandbox's only
+natively-installed SDK, so `dotnet build`/`dotnet run`/`dotnet test` all work with no
+extra env vars needed to launch the tool itself. Target solutions the tool analyzes
+may still be on an older TFM (e.g. `net8.0`) that this sandbox lacks a matching runtime
+for — `ProcessRunner` (in `CoverageCompletion.Infrastructure`) sets
+`DOTNET_ROLL_FORWARD=LatestMajor` on every `git`/`dotnet` child process it spawns so
+`dotnet build`/`dotnet test` against those target solutions still launch regardless of
+the host's exact runtimes. No manual roll-forward setup is required anywhere anymore.
 
 FluentAssertions is pinned to `7.x` in both test projects — 8.x requires a paid commercial
 license.
@@ -78,6 +75,11 @@ not an implementation detail.
 via `Process`:
 - `Git/WorktreeManager` — creates `coverage/session-<timestamp>-<random>` worktrees, removes them.
 - `Git/GitCommitter` — stages + commits a single file, returns the commit SHA.
+- `Git/BranchMerger` — after the session, merges the `coverage/session-*` branch into a fresh
+  `coverage/merged-<timestamp>-<random>` branch cut from the branch the session started on (via
+  its own temporary worktree, never touching the caller's actual working tree). On conflict, that
+  worktree is left in place (not cleaned up) for the user to resolve by hand; the CLI logs which
+  outcome happened either way.
 - `Coverage/CoberturaCoverageParser` — pure XML→`CoverageGap` parsing (no I/O, easy to unit test
   in isolation), `Coverage/CoverageAnalyzer` drives `dotnet test --collect:"XPlat Code Coverage"`
   and feeds its output through the parser.

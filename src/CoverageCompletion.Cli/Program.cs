@@ -48,6 +48,7 @@ services.AddSingleton<IWorktreeManager, WorktreeManager>();
 services.AddSingleton<ICoverageAnalyzer, CoverageAnalyzer>();
 services.AddSingleton<IBuildTestRunner, BuildTestRunner>();
 services.AddSingleton<IGitCommitter, GitCommitter>();
+services.AddSingleton<IBranchMerger, BranchMerger>();
 services.AddSingleton<ISummaryReporter, SummaryReporter>();
 services.AddSingleton<ITestProjectPackageEnsurer, DotnetPackageEnsurer>();
 services.AddSingleton<TestPatternFinder>();

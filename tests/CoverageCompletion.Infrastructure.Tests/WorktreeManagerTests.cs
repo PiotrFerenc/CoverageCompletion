@@ -17,6 +17,7 @@ public class WorktreeManagerTests : IDisposable
 
         _session.RepoPath.Should().Be(_repo.Path);
         _session.BranchName.Should().StartWith("coverage/session-");
+        _session.BaseBranch.Should().Be("main");
         Directory.Exists(_session.WorktreePath).Should().BeTrue();
         File.Exists(Path.Combine(_session.WorktreePath, "README.md")).Should().BeTrue();
 

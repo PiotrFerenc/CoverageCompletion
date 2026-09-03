@@ -8,13 +8,27 @@ public record CoverageGap(
     string MemberName,
     IReadOnlyList<int> UncoveredLines);
 
-public record WorktreeSession(string RepoPath, string WorktreePath, string BranchName);
+public record WorktreeSession(string RepoPath, string WorktreePath, string BranchName, string BaseBranch);
 
 public interface IWorktreeManager
 {
     Task<WorktreeSession> CreateAsync(string repoPath, CancellationToken ct);
 
     Task RemoveAsync(WorktreeSession session, CancellationToken ct);
+}
+
+/// <summary>
+/// Result of merging a finished session branch into a new branch cut from the branch the
+/// session started on. <see cref="HasConflicts"/> true means <see cref="TargetWorktreePath"/>
+/// was deliberately left in place (not cleaned up) with the conflict markers, for the user to
+/// resolve by hand.
+/// </summary>
+public record MergeOutcome(string TargetBranch, string TargetWorktreePath, bool HasConflicts, string Output);
+
+public interface IBranchMerger
+{
+    Task<MergeOutcome> MergeSessionIntoNewBranchAsync(
+        string repoPath, string baseBranch, string sessionBranch, CancellationToken ct);
 }
 
 public interface ICoverageAnalyzer

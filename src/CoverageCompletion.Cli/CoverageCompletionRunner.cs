@@ -19,7 +19,8 @@ public sealed class CoverageCompletionRunner(
     ISummaryReporter reporter,
     ITestGenerator testGenerator,
     RunnerOptions? options = null,
-    ITestProjectPackageEnsurer? packageEnsurer = null)
+    ITestProjectPackageEnsurer? packageEnsurer = null,
+    IBranchMerger? branchMerger = null)
 {
     private readonly RunnerOptions _options = options ?? new RunnerOptions();
 
@@ -84,6 +85,16 @@ public sealed class CoverageCompletionRunner(
         }
         finally
         {
+            if (branchMerger is not null)
+            {
+                var mergeOutcome = await branchMerger.MergeSessionIntoNewBranchAsync(
+                    repoPath, session.BaseBranch, session.BranchName, CancellationToken.None);
+
+                Console.WriteLine(mergeOutcome.HasConflicts
+                    ? $"Merge into {mergeOutcome.TargetBranch} has conflicts - resolve manually in {mergeOutcome.TargetWorktreePath}"
+                    : $"Merged into {mergeOutcome.TargetBranch}");
+            }
+
             var summaryPath = Path.Combine(repoPath, $"coverage-completion-summary-{session.BranchName.Replace('/', '-')}.md");
             await reporter.WriteAsync(summaryPath, CancellationToken.None);
             Console.WriteLine($"Summary written to {summaryPath}");

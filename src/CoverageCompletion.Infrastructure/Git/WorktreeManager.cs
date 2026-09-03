@@ -23,7 +23,7 @@ public sealed class WorktreeManager : IWorktreeManager
 
         await GitProcess.RunOrThrowAsync(repoPath, ct, "worktree", "add", "-b", branchName, worktreePath, currentBranch);
 
-        return new WorktreeSession(repoPath, worktreePath, branchName);
+        return new WorktreeSession(repoPath, worktreePath, branchName, currentBranch);
     }
 
     public async Task RemoveAsync(WorktreeSession session, CancellationToken ct)

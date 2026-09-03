@@ -94,6 +94,17 @@ public sealed class FakeTestProjectPackageEnsurer(Action<string>? onEnsure = nul
     }
 }
 
+public sealed class FakeBranchMerger(MergeOutcome outcome) : IBranchMerger
+{
+    public List<(string RepoPath, string BaseBranch, string SessionBranch)> Calls { get; } = [];
+
+    public Task<MergeOutcome> MergeSessionIntoNewBranchAsync(string repoPath, string baseBranch, string sessionBranch, CancellationToken ct)
+    {
+        Calls.Add((repoPath, baseBranch, sessionBranch));
+        return Task.FromResult(outcome);
+    }
+}
+
 public sealed class FakeTestGenerator(Func<CoverageGap, string> filePathForGap, Exception? throwOnGenerate = null) : ITestGenerator
 {
     public int RegenerateCallCount { get; private set; }
