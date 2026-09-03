@@ -24,16 +24,15 @@ public class OpenAiClient
     private readonly HttpClient _httpClient;
     private readonly TimeSpan[] _retryDelays;
 
-    public OpenAiClient(HttpClient httpClient)
-        : this(httpClient, DefaultRetryDelays)
-    {
-    }
-
-    // Lets callers (tests, in particular) use short delays instead of waiting on real backoff timers.
-    public OpenAiClient(HttpClient httpClient, TimeSpan[] retryDelays)
+    // A single constructor with an optional param, not an overload: AddHttpClient<T>()'s typed-client
+    // factory throws "Multiple constructors accepting all given argument types" when a type registered
+    // this way has more than one public constructor starting with HttpClient - even though only one of
+    // them would ever actually be satisfiable via DI. retryDelays lets tests use short delays instead of
+    // waiting on real backoff timers.
+    public OpenAiClient(HttpClient httpClient, TimeSpan[]? retryDelays = null)
     {
         _httpClient = httpClient;
-        _retryDelays = retryDelays;
+        _retryDelays = retryDelays ?? DefaultRetryDelays;
     }
 
     public async Task<string> CompleteAsync(string prompt, CancellationToken ct)
