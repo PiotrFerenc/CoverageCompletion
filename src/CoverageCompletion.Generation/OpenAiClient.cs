@@ -1,38 +1,28 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+using System.ClientModel;
+using System.ClientModel.Primitives;
+using OpenAI;
+using OpenAI.Chat;
 
 namespace CoverageCompletion.Generation;
 
 /// <summary>
-/// Thin wrapper over the OpenAI Chat Completions API. HttpClient is injected so tests
-/// can substitute the HttpMessageHandler instead of hitting the network.
+/// Thin wrapper over the official OpenAI .NET SDK's ChatClient. httpClient/retryPolicy are
+/// injected so tests can substitute a fake transport instead of hitting the network, and a
+/// zero-delay retry policy instead of waiting on real backoff timers. Transient-failure retry
+/// (429/5xx/network) is handled by the SDK's own ClientRetryPolicy - default 3 retries, 4
+/// attempts total - so no custom retry loop is needed here.
 /// </summary>
 public class OpenAiClient
 {
     private const string DefaultModel = "gpt-4.1";
-    private const string Endpoint = "https://api.openai.com/v1/chat/completions";
 
-    // Simple exponential backoff for transient failures (429 / 5xx / network timeouts).
-    // 3 retries after the initial attempt = 4 attempts total.
-    private static readonly TimeSpan[] DefaultRetryDelays =
-    {
-        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4),
-    };
+    private readonly HttpClient? _httpClient;
+    private readonly PipelinePolicy? _retryPolicy;
 
-    private readonly HttpClient _httpClient;
-    private readonly TimeSpan[] _retryDelays;
-
-    // A single constructor with an optional param, not an overload: AddHttpClient<T>()'s typed-client
-    // factory throws "Multiple constructors accepting all given argument types" when a type registered
-    // this way has more than one public constructor starting with HttpClient - even though only one of
-    // them would ever actually be satisfiable via DI. retryDelays lets tests use short delays instead of
-    // waiting on real backoff timers.
-    public OpenAiClient(HttpClient httpClient, TimeSpan[]? retryDelays = null)
+    public OpenAiClient(HttpClient? httpClient = null, PipelinePolicy? retryPolicy = null)
     {
         _httpClient = httpClient;
-        _retryDelays = retryDelays ?? DefaultRetryDelays;
+        _retryPolicy = retryPolicy;
     }
 
     public async Task<string> CompleteAsync(string prompt, CancellationToken ct)
@@ -50,74 +40,24 @@ public class OpenAiClient
             model = DefaultModel;
         }
 
-        var requestBody = new
+        var options = new OpenAIClientOptions();
+        if (_httpClient is not null)
         {
-            model,
-            messages = new[] { new { role = "user", content = prompt } },
-        };
-        var requestJson = JsonSerializer.Serialize(requestBody);
-
-        var maxAttempts = _retryDelays.Length + 1;
-        Exception? lastError = null;
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            if (attempt > 1)
-            {
-                await Task.Delay(_retryDelays[attempt - 2], ct);
-            }
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
-            {
-                Content = new StringContent(requestJson, Encoding.UTF8, "application/json"),
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-            HttpResponseMessage response;
-            try
-            {
-                response = await _httpClient.SendAsync(request, ct);
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or TaskCanceledException)
-            {
-                // Network-level failure (connection reset, DNS blip, request timeout) - treat as transient.
-                lastError = ex;
-                continue;
-            }
-
-            using (response)
-            {
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseJson = await response.Content.ReadAsStringAsync(ct);
-                    using var document = JsonDocument.Parse(responseJson);
-                    var content = document.RootElement
-                        .GetProperty("choices")[0]
-                        .GetProperty("message")
-                        .GetProperty("content")
-                        .GetString() ?? string.Empty;
-
-                    return ExtractCodeBlock(content);
-                }
-
-                if (!IsTransientStatusCode(response.StatusCode))
-                {
-                    // Non-transient (401/403/400/etc.) - config/key problem, retrying won't help.
-                    response.EnsureSuccessStatusCode();
-                }
-
-                lastError = new HttpRequestException(
-                    $"OpenAI API returned transient status {(int)response.StatusCode} ({response.StatusCode}).");
-            }
+            options.Transport = new HttpClientPipelineTransport(_httpClient);
         }
 
-        throw new HttpRequestException(
-            $"OpenAI API call failed after {maxAttempts} attempts due to transient errors. Last error: {lastError?.Message}",
-            lastError);
-    }
+        if (_retryPolicy is not null)
+        {
+            options.RetryPolicy = _retryPolicy;
+        }
 
-    private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
-        statusCode == HttpStatusCode.TooManyRequests || (int)statusCode >= 500;
+        var chatClient = new ChatClient(model, new ApiKeyCredential(apiKey), options);
+        var completion = await chatClient.CompleteChatAsync(
+            [new UserChatMessage(prompt)], cancellationToken: ct);
+
+        var content = completion.Value.Content.Count > 0 ? completion.Value.Content[0].Text : string.Empty;
+        return ExtractCodeBlock(content);
+    }
 
     private static string ExtractCodeBlock(string content)
     {

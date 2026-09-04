@@ -91,8 +91,10 @@ via `Process`:
   style from (naming convention first, then a loose content heuristic for Mediator handler /
   FluentResults-style tests as a fallback).
 - `PromptBuilder` — pure string-building for the initial prompt and the retry-with-error prompt.
-- `OpenAiClient` — thin `HttpClient` wrapper around the OpenAI Chat Completions API (no SDK
-  dependency, so tests substitute `HttpMessageHandler` instead of hitting the network).
+- `OpenAiClient` — thin wrapper over the official `OpenAI` NuGet SDK's `ChatClient`. Retry on
+  transient failures (429/5xx) is handled by the SDK's own `ClientRetryPolicy`, not custom code.
+  Tests inject a fake `HttpMessageHandler` via `HttpClientPipelineTransport` (no real network)
+  and a zero-delay `ClientRetryPolicy` subclass (no real backoff waits).
 - `TestGenerator : ITestGenerator` — wires the three together.
 
 **`CoverageCompletion.Cli`** (`Program.cs`) is the only place that knows about both tracks. It
