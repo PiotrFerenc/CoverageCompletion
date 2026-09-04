@@ -8,12 +8,27 @@ namespace CoverageCompletion.Infrastructure.Reporting;
 /// </summary>
 public sealed class SummaryReporter : ISummaryReporter
 {
+    private readonly Lock _lock = new();
     private readonly List<(CoverageGap Gap, string CommitSha)> _completed = [];
     private readonly List<(CoverageGap Gap, string Reason)> _skipped = [];
 
-    public void RecordCompleted(CoverageGap gap, string commitSha) => _completed.Add((gap, commitSha));
+    // Gaps can now be processed by several worktree lanes concurrently (see
+    // CoverageCompletionRunner), so recording a result must be thread-safe.
+    public void RecordCompleted(CoverageGap gap, string commitSha)
+    {
+        lock (_lock)
+        {
+            _completed.Add((gap, commitSha));
+        }
+    }
 
-    public void RecordSkipped(CoverageGap gap, string reason) => _skipped.Add((gap, reason));
+    public void RecordSkipped(CoverageGap gap, string reason)
+    {
+        lock (_lock)
+        {
+            _skipped.Add((gap, reason));
+        }
+    }
 
     public async Task WriteAsync(string path, CancellationToken ct)
     {

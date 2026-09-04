@@ -7,15 +7,26 @@ namespace CoverageCompletion.Cli.Tests;
 /// Contracts has no dependency on one, and these interfaces are small enough that fakes
 /// read more clearly than mock setup code.
 /// </summary>
-public sealed class FakeWorktreeManager(WorktreeSession session) : IWorktreeManager
+public sealed class FakeWorktreeManager : IWorktreeManager
 {
-    public int RemoveCallCount { get; private set; }
+    private readonly Queue<WorktreeSession> _sessions;
 
-    public Task<WorktreeSession> CreateAsync(string repoPath, CancellationToken ct) => Task.FromResult(session);
+    public FakeWorktreeManager(WorktreeSession session) : this([session])
+    {
+    }
+
+    public FakeWorktreeManager(IEnumerable<WorktreeSession> sessions) => _sessions = new(sessions);
+
+    public int RemoveCallCount { get; private set; }
+    public List<WorktreeSession> Removed { get; } = [];
+
+    public Task<WorktreeSession> CreateAsync(string repoPath, CancellationToken ct) => Task.FromResult(
+        _sessions.Count > 0 ? _sessions.Dequeue() : throw new InvalidOperationException("No more scripted worktree sessions."));
 
     public Task RemoveAsync(WorktreeSession removedSession, CancellationToken ct)
     {
         RemoveCallCount++;
+        Removed.Add(removedSession);
         return Task.CompletedTask;
     }
 }
@@ -96,11 +107,12 @@ public sealed class FakeTestProjectPackageEnsurer(Action<string>? onEnsure = nul
 
 public sealed class FakeBranchMerger(MergeOutcome outcome) : IBranchMerger
 {
-    public List<(string RepoPath, string BaseBranch, string SessionBranch)> Calls { get; } = [];
+    public List<(string RepoPath, string BaseBranch, IReadOnlyList<string> SessionBranches)> Calls { get; } = [];
 
-    public Task<MergeOutcome> MergeSessionIntoNewBranchAsync(string repoPath, string baseBranch, string sessionBranch, CancellationToken ct)
+    public Task<MergeOutcome> MergeSessionsIntoNewBranchAsync(
+        string repoPath, string baseBranch, IReadOnlyList<string> sessionBranches, CancellationToken ct)
     {
-        Calls.Add((repoPath, baseBranch, sessionBranch));
+        Calls.Add((repoPath, baseBranch, sessionBranches));
         return Task.FromResult(outcome);
     }
 }

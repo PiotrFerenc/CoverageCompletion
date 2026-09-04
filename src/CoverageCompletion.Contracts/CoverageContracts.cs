@@ -27,8 +27,14 @@ public record MergeOutcome(string TargetBranch, string TargetWorktreePath, bool 
 
 public interface IBranchMerger
 {
-    Task<MergeOutcome> MergeSessionIntoNewBranchAsync(
-        string repoPath, string baseBranch, string sessionBranch, CancellationToken ct);
+    /// <summary>
+    /// Merges one or more finished session branches, in order, into a single new branch cut
+    /// from <paramref name="baseBranch"/>. If a branch conflicts, merging stops there and the
+    /// target worktree - containing whatever merged cleanly plus the conflicted merge in
+    /// progress - is left in place for manual resolution.
+    /// </summary>
+    Task<MergeOutcome> MergeSessionsIntoNewBranchAsync(
+        string repoPath, string baseBranch, IReadOnlyList<string> sessionBranches, CancellationToken ct);
 }
 
 public interface ICoverageAnalyzer

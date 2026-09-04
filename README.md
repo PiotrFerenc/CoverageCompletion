@@ -6,16 +6,19 @@
 Point it at a solution and it will:
 
 1. Measure code coverage and find every gap (uncovered method).
-2. For each gap, generate a matching unit test with an LLM (OpenAI),
+2. Split the gaps across several parallel worktrees (bounded, default 4) so
+   independent gaps build and test concurrently instead of one at a time.
+3. For each gap, generate a matching unit test with an LLM (OpenAI),
    copying the assertion style from an existing test in the same solution.
-3. Build and run the generated test.
-4. On failure, feed the build/test error back to the LLM and retry (up to
+4. Build and run the generated test.
+5. On failure, feed the build/test error back to the LLM and retry (up to
    5 attempts), then skip and record why if it still doesn't pass.
-5. Commit each successfully-passing test file.
-6. Merge the session's commits into a new branch cut from the branch it
-   started on, and write a Markdown summary of what was completed/skipped.
+6. Commit each successfully-passing test file.
+7. Merge every worktree's commits, in order, into one new branch cut from
+   the branch the run started on, and write a Markdown summary of what was
+   completed/skipped.
 
-All of this happens inside a dedicated `git worktree` that the tool creates
+All of this happens inside dedicated `git worktree`s that the tool creates
 and removes itself — it never touches the caller's working tree directly.
 
 ## Requirements
@@ -69,17 +72,18 @@ tests/
   `IBuildTestRunner`, `IGitCommitter`, `IBranchMerger`, `ITestGenerator`,
   `ISummaryReporter`) — the only coordination point between Infrastructure
   and Generation.
-- **Infrastructure** shells out to `git`/`dotnet`: creates/removes the
-  session worktree, parses Cobertura coverage XML into gaps, builds/tests,
-  commits, merges the session branch into a new branch, and writes the
-  summary report.
+- **Infrastructure** shells out to `git`/`dotnet`: creates/removes worktrees,
+  parses Cobertura coverage XML into gaps, builds/tests, commits, merges
+  every lane's branch into one new branch, and writes the summary report.
 - **Generation** is everything LLM-facing: finding a style pattern in the
-  target solution, building the prompt, calling the OpenAI Chat Completions
-  API, and retrying with the previous error on failure.
+  target solution, building the prompt, calling OpenAI's official `ChatClient`
+  SDK, and retrying with the previous error on failure.
 - **Cli** is the only project that depends on both Infrastructure and
-  Generation. It wires up DI and runs the main loop: create worktree →
-  analyze coverage → for each gap, generate → write → build → test → retry
-  or skip → commit → merge → write summary → remove worktree.
+  Generation. It wires up DI and runs the main loop: create a worktree →
+  analyze coverage → create more worktrees (one per parallel lane) → split
+  gaps across lanes → per gap: generate → write → build → test → retry or
+  skip → commit → merge every lane's branch → write summary → remove every
+  worktree.
 
 ## Development
 

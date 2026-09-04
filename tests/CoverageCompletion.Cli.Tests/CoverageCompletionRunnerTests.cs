@@ -149,9 +149,11 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
         // Call order follows gap order: succeeding gap's build+test, then failing gap's two failed build attempts.
         var buildRunner = new FakeBuildTestRunner([Ok(), Fail(), Fail()], [Ok()]);
 
+        // Pinned to a single lane: this test's assertions rely on the two gaps being processed
+        // sequentially against one shared FakeBuildTestRunner queue, in gap order.
         var runner = new CoverageCompletionRunner(
             worktreeManager, new FakeCoverageAnalyzer([succeeding, failing]), buildRunner, committer, reporter,
-            testGenerator, new RunnerOptions(MaxAttempts: 2));
+            testGenerator, new RunnerOptions(MaxAttempts: 2, MaxConcurrency: 1));
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
@@ -237,9 +239,11 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
             }],
             [Ok()]);
 
+        // Pinned to a single lane: cancellation happening "mid-loop, after the first gap" is only
+        // a meaningful/deterministic scenario when gaps are processed one at a time.
         var runner = new CoverageCompletionRunner(
             worktreeManager, new FakeCoverageAnalyzer([succeeding, interrupted]), buildRunner, committer, reporter,
-            testGenerator);
+            testGenerator, new RunnerOptions(MaxConcurrency: 1));
 
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, cts.Token);
 
@@ -271,6 +275,50 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
         var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
 
         exitCode.ShouldBe(0);
-        branchMerger.Calls.ShouldHaveSingleItem().ShouldBe((_repoPath, _session.BaseBranch, _session.BranchName));
+        var call = branchMerger.Calls.ShouldHaveSingleItem();
+        call.RepoPath.ShouldBe(_repoPath);
+        call.BaseBranch.ShouldBe(_session.BaseBranch);
+        call.SessionBranches.ShouldBe([_session.BranchName]);
+    }
+
+    [Fact]
+    public async Task MultipleGaps_WithConcurrencyEnabled_ProcessesThemAcrossOneWorktreePerLane()
+    {
+        var gapA = Gap("Widget");
+        var gapB = Gap("Gadget");
+        var gapC = Gap("Sprocket");
+        var sessionB = _session with { WorktreePath = Directory.CreateTempSubdirectory("cc-worktree-b-").FullName, BranchName = "coverage/branch-2" };
+        var sessionC = _session with { WorktreePath = Directory.CreateTempSubdirectory("cc-worktree-c-").FullName, BranchName = "coverage/branch-3" };
+        var worktreeManager = new FakeWorktreeManager([_session, sessionB, sessionC]);
+        var committer = new FakeGitCommitter();
+        var reporter = new FakeSummaryReporter();
+        var testGenerator = new FakeTestGenerator(gap => Path.Combine(
+            (gap.TypeName switch { "Widget" => _session, "Gadget" => sessionB, _ => sessionC }).WorktreePath,
+            "Tests", $"{gap.TypeName}Tests.cs"));
+        var buildRunner = new FakeBuildTestRunner([Ok(), Ok(), Ok()], [Ok(), Ok(), Ok()]);
+        var branchMerger = new FakeBranchMerger(new MergeOutcome("coverage/merged-1", "/tmp/whatever", HasConflicts: false, "Fast-forward"));
+
+        var runner = new CoverageCompletionRunner(
+            worktreeManager, new FakeCoverageAnalyzer([gapA, gapB, gapC]), buildRunner, committer, reporter,
+            testGenerator, new RunnerOptions(MaxConcurrency: 3), branchMerger: branchMerger);
+
+        try
+        {
+            var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
+
+            exitCode.ShouldBe(0);
+            reporter.Completed.Count.ShouldBe(3);
+            reporter.Skipped.ShouldBeEmpty();
+            committer.Commits.Count.ShouldBe(3);
+            worktreeManager.RemoveCallCount.ShouldBe(3);
+            worktreeManager.Removed.ShouldBe([_session, sessionB, sessionC], ignoreOrder: true);
+            var call = branchMerger.Calls.ShouldHaveSingleItem();
+            call.SessionBranches.ShouldBe([_session.BranchName, sessionB.BranchName, sessionC.BranchName], ignoreOrder: true);
+        }
+        finally
+        {
+            Directory.Delete(sessionB.WorktreePath, recursive: true);
+            Directory.Delete(sessionC.WorktreePath, recursive: true);
+        }
     }
 }

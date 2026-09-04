@@ -75,11 +75,12 @@ not an implementation detail.
 via `Process`:
 - `Git/WorktreeManager` — creates `coverage/session-<timestamp>-<random>` worktrees, removes them.
 - `Git/GitCommitter` — stages + commits a single file, returns the commit SHA.
-- `Git/BranchMerger` — after the session, merges the `coverage/session-*` branch into a fresh
-  `coverage/merged-<timestamp>-<random>` branch cut from the branch the session started on (via
-  its own temporary worktree, never touching the caller's actual working tree). On conflict, that
-  worktree is left in place (not cleaned up) for the user to resolve by hand; the CLI logs which
-  outcome happened either way.
+- `Git/BranchMerger` — after the session(s), merges the `coverage/session-*` branch(es) - one per
+  parallel worktree lane, see below - in order into a fresh `coverage/merged-<timestamp>-<random>`
+  branch cut from the branch the session started on (via its own temporary worktree, never
+  touching the caller's actual working tree). On conflict, merging stops there and that worktree
+  is left in place (not cleaned up) for the user to resolve by hand; the CLI logs which outcome
+  happened either way.
 - `Coverage/CoberturaCoverageParser` — pure XML→`CoverageGap` parsing (no I/O, easy to unit test
   in isolation), `Coverage/CoverageAnalyzer` drives `dotnet test --collect:"XPlat Code Coverage"`
   and feeds its output through the parser.
@@ -99,9 +100,13 @@ via `Process`:
 
 **`CoverageCompletion.Cli`** (`Program.cs`) is the only place that knows about both tracks. It
 builds a `ServiceCollection`, registers every implementation under its `Contracts` interface,
-then runs the orchestration loop: create worktree → analyze coverage → for each gap, generate →
-write file → build → test → on failure regenerate with the error fed back (up to 5 attempts,
-then skip and record why) → on success commit → write the summary file → remove the worktree.
+then runs the orchestration loop: create a worktree → analyze coverage on it → create up to
+`RunnerOptions.MaxConcurrency` (default 4) more worktrees, one per parallel lane, so concurrent
+`dotnet build`/`dotnet test` runs never race on the same obj/bin output → split the gaps
+round-robin across lanes → within each lane, for each gap: generate → write file → build → test →
+on failure regenerate with the error fed back (up to 5 attempts, then skip and record why) → on
+success commit. After all lanes finish: merge every lane's branch into one new branch, write the
+summary file, remove every worktree.
 
 The target solution being tested is expected to use Mediator (source-generated
 `IRequestHandler<TRequest, TResponse>`) and FluentResults (`Result`/`Result<T>`) — the

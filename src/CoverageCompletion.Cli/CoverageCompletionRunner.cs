@@ -3,7 +3,9 @@ using CoverageCompletion.Contracts;
 
 namespace CoverageCompletion.Cli;
 
-public sealed record RunnerOptions(int MaxAttempts = 5);
+// MaxConcurrency default of 4: enough to meaningfully parallelize a solution with many gaps
+// without hammering the OpenAI rate limit or spinning up an excessive number of worktrees.
+public sealed record RunnerOptions(int MaxAttempts = 5, int MaxConcurrency = 4);
 
 /// <summary>
 /// Orchestrates one coverage-completion session: worktree -> analyze -> per-gap
@@ -26,10 +28,10 @@ public sealed class CoverageCompletionRunner(
 
     public async Task<int> RunAsync(string repoPath, string solutionPath, CancellationToken ct)
     {
-        WorktreeSession session;
+        WorktreeSession primarySession;
         try
         {
-            session = await worktreeManager.CreateAsync(repoPath, ct);
+            primarySession = await worktreeManager.CreateAsync(repoPath, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -40,10 +42,10 @@ public sealed class CoverageCompletionRunner(
             return 130;
         }
 
-        Console.WriteLine($"Worktree ready: {session.WorktreePath} (branch {session.BranchName})");
+        Console.WriteLine($"Worktree ready: {primarySession.WorktreePath} (branch {primarySession.BranchName})");
 
         var solutionRelativePath = Path.GetRelativePath(repoPath, solutionPath);
-        var worktreeSolutionPath = Path.Combine(session.WorktreePath, solutionRelativePath);
+        var sessions = new List<WorktreeSession> { primarySession };
 
         try
         {
@@ -51,7 +53,8 @@ public sealed class CoverageCompletionRunner(
             IReadOnlyList<CoverageGap> gaps;
             try
             {
-                gaps = await coverageAnalyzer.AnalyzeAsync(worktreeSolutionPath, ct);
+                gaps = await coverageAnalyzer.AnalyzeAsync(
+                    Path.Combine(primarySession.WorktreePath, solutionRelativePath), ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -61,49 +64,80 @@ public sealed class CoverageCompletionRunner(
 
             Console.WriteLine($"Found {gaps.Count} coverage gap(s).");
 
-            foreach (var gap in gaps)
+            // One worktree per lane so concurrent `dotnet build`/`dotnet test` runs never race on
+            // the same obj/bin output - `git worktree add` itself isn't safe to run concurrently
+            // against the same repo, so the extra worktrees are created sequentially up front.
+            var laneCount = Math.Max(1, Math.Min(_options.MaxConcurrency, gaps.Count));
+            for (var i = 1; i < laneCount && !ct.IsCancellationRequested; i++)
             {
-                if (ct.IsCancellationRequested)
-                {
-                    Console.WriteLine("Cancellation requested, stopping before further gaps.");
-                    break;
-                }
-
-                Console.WriteLine($"--- {gap.TypeName}.{gap.MemberName} ---");
-
-                try
-                {
-                    await ProcessGapAsync(gap, session, worktreeSolutionPath, ct);
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    Console.WriteLine("  -> cancelled mid-attempt, treated as skipped");
-                    reporter.RecordSkipped(gap, "cancelled by user");
-                    break;
-                }
+                sessions.Add(await worktreeManager.CreateAsync(repoPath, ct));
             }
+
+            if (sessions.Count > 1)
+            {
+                Console.WriteLine($"Processing {gaps.Count} gap(s) across {sessions.Count} parallel worktree(s).");
+            }
+
+            var lanes = sessions.Select((session, laneIndex) =>
+            {
+                var laneGaps = gaps.Where((_, gapIndex) => gapIndex % sessions.Count == laneIndex).ToList();
+                var laneWorktreeSolutionPath = Path.Combine(session.WorktreePath, solutionRelativePath);
+                return ProcessLaneAsync(session, laneGaps, laneWorktreeSolutionPath, ct);
+            });
+
+            await Task.WhenAll(lanes);
         }
         finally
         {
             if (branchMerger is not null)
             {
-                var mergeOutcome = await branchMerger.MergeSessionIntoNewBranchAsync(
-                    repoPath, session.BaseBranch, session.BranchName, CancellationToken.None);
+                var mergeOutcome = await branchMerger.MergeSessionsIntoNewBranchAsync(
+                    repoPath, primarySession.BaseBranch, sessions.Select(s => s.BranchName).ToList(), CancellationToken.None);
 
                 Console.WriteLine(mergeOutcome.HasConflicts
                     ? $"Merge into {mergeOutcome.TargetBranch} has conflicts - resolve manually in {mergeOutcome.TargetWorktreePath}"
                     : $"Merged into {mergeOutcome.TargetBranch}");
             }
 
-            var summaryPath = Path.Combine(repoPath, $"coverage-completion-summary-{session.BranchName.Replace('/', '-')}.md");
+            var summaryPath = Path.Combine(repoPath, $"coverage-completion-summary-{primarySession.BranchName.Replace('/', '-')}.md");
             await reporter.WriteAsync(summaryPath, CancellationToken.None);
             Console.WriteLine($"Summary written to {summaryPath}");
 
-            await worktreeManager.RemoveAsync(session, CancellationToken.None);
-            Console.WriteLine("Worktree removed.");
+            foreach (var session in sessions)
+            {
+                await worktreeManager.RemoveAsync(session, CancellationToken.None);
+            }
+
+            Console.WriteLine("Worktree(s) removed.");
         }
 
         return ct.IsCancellationRequested ? 130 : 0;
+    }
+
+    private async Task ProcessLaneAsync(
+        WorktreeSession session, IReadOnlyList<CoverageGap> gaps, string worktreeSolutionPath, CancellationToken ct)
+    {
+        foreach (var gap in gaps)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                Console.WriteLine("Cancellation requested, stopping before further gaps.");
+                break;
+            }
+
+            Console.WriteLine($"--- {gap.TypeName}.{gap.MemberName} ---");
+
+            try
+            {
+                await ProcessGapAsync(gap, session, worktreeSolutionPath, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                Console.WriteLine("  -> cancelled mid-attempt, treated as skipped");
+                reporter.RecordSkipped(gap, "cancelled by user");
+                break;
+            }
+        }
     }
 
     private async Task ProcessGapAsync(CoverageGap gap, WorktreeSession session, string worktreeSolutionPath, CancellationToken ct)
