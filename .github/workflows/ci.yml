@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - run: dotnet build
+
+      # EndToEnd.Tests drives real git worktrees plus real dotnet build/test cycles end to end
+      # and can run for tens of minutes - deliberately excluded here, run it locally when needed.
+      - run: dotnet test tests/CoverageCompletion.Infrastructure.Tests --no-build
+      - run: dotnet test tests/CoverageCompletion.Generation.Tests --no-build
+      - run: dotnet test tests/CoverageCompletion.Cli.Tests --no-build
