@@ -22,8 +22,10 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
         Directory.Delete(_worktreePath, recursive: true);
     }
 
-    private static CoverageGap Gap(string typeName) =>
-        new("Foo.csproj", "Foo.cs", "MyNamespace", typeName, "DoWork", [10, 11]);
+    private static CoverageGap Gap(string typeName) => Gap(typeName, "DoWork");
+
+    private static CoverageGap Gap(string typeName, string memberName) =>
+        new("Foo.csproj", "Foo.cs", "MyNamespace", typeName, memberName, [10, 11]);
 
     private string FilePathFor(CoverageGap gap) =>
         Path.Combine(_worktreePath, "Tests", $"{gap.TypeName}Tests.cs");
@@ -319,6 +321,41 @@ public sealed class CoverageCompletionRunnerTests : IDisposable
         {
             Directory.Delete(sessionB.WorktreePath, recursive: true);
             Directory.Delete(sessionC.WorktreePath, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GapsSharingATypeName_StayInTheSameLane_EvenWithHigherConcurrencyAvailable()
+    {
+        // Two gaps on Widget would land in the same generated Tests.cs file - keeping them in one
+        // lane avoids an add/add merge conflict between two independently generated copies of it.
+        var widgetCtor = Gap("Widget", "ctor");
+        var widgetDoWork = Gap("Widget", "DoWork");
+        var gadget = Gap("Gadget");
+        var sessionB = _session with { WorktreePath = Directory.CreateTempSubdirectory("cc-worktree-b-").FullName, BranchName = "coverage/branch-2" };
+        var worktreeManager = new FakeWorktreeManager([_session, sessionB]);
+        var committer = new FakeGitCommitter();
+        var reporter = new FakeSummaryReporter();
+        var testGenerator = new FakeTestGenerator(FilePathFor);
+        var buildRunner = new FakeBuildTestRunner([Ok(), Ok(), Ok()], [Ok(), Ok(), Ok()]);
+
+        var runner = new CoverageCompletionRunner(
+            worktreeManager, new FakeCoverageAnalyzer([widgetCtor, widgetDoWork, gadget]), buildRunner, committer,
+            reporter, testGenerator, new RunnerOptions(MaxConcurrency: 3));
+
+        try
+        {
+            var exitCode = await runner.RunAsync(_repoPath, _solutionPath, CancellationToken.None);
+
+            exitCode.ShouldBe(0);
+            // 2 type-name groups (Widget, Gadget), not 3 gaps -> only 2 worktrees, despite
+            // MaxConcurrency allowing 3.
+            worktreeManager.CreateCallCount.ShouldBe(2);
+            reporter.Completed.Count.ShouldBe(3);
+        }
+        finally
+        {
+            Directory.Delete(sessionB.WorktreePath, recursive: true);
         }
     }
 }

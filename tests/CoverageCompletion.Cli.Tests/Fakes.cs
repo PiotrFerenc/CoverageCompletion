@@ -18,10 +18,15 @@ public sealed class FakeWorktreeManager : IWorktreeManager
     public FakeWorktreeManager(IEnumerable<WorktreeSession> sessions) => _sessions = new(sessions);
 
     public int RemoveCallCount { get; private set; }
+    public int CreateCallCount { get; private set; }
     public List<WorktreeSession> Removed { get; } = [];
 
-    public Task<WorktreeSession> CreateAsync(string repoPath, CancellationToken ct) => Task.FromResult(
-        _sessions.Count > 0 ? _sessions.Dequeue() : throw new InvalidOperationException("No more scripted worktree sessions."));
+    public Task<WorktreeSession> CreateAsync(string repoPath, CancellationToken ct)
+    {
+        CreateCallCount++;
+        return Task.FromResult(
+            _sessions.Count > 0 ? _sessions.Dequeue() : throw new InvalidOperationException("No more scripted worktree sessions."));
+    }
 
     public Task RemoveAsync(WorktreeSession removedSession, CancellationToken ct)
     {

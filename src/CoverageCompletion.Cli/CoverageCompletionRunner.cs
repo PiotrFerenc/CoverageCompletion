@@ -64,10 +64,15 @@ public sealed class CoverageCompletionRunner(
 
             Console.WriteLine($"Found {gaps.Count} coverage gap(s).");
 
+            // Gaps on the same type land in the same generated test file (naming convention:
+            // {TypeName}Tests.cs) - keep each type's gaps together in one lane so independently
+            // generated copies of that file don't turn into an add/add merge conflict later.
+            var groups = gaps.GroupBy(gap => gap.TypeName).ToList();
+
             // One worktree per lane so concurrent `dotnet build`/`dotnet test` runs never race on
             // the same obj/bin output - `git worktree add` itself isn't safe to run concurrently
             // against the same repo, so the extra worktrees are created sequentially up front.
-            var laneCount = Math.Max(1, Math.Min(_options.MaxConcurrency, gaps.Count));
+            var laneCount = Math.Max(1, Math.Min(_options.MaxConcurrency, groups.Count));
             for (var i = 1; i < laneCount && !ct.IsCancellationRequested; i++)
             {
                 sessions.Add(await worktreeManager.CreateAsync(repoPath, ct));
@@ -80,7 +85,9 @@ public sealed class CoverageCompletionRunner(
 
             var lanes = sessions.Select((session, laneIndex) =>
             {
-                var laneGaps = gaps.Where((_, gapIndex) => gapIndex % sessions.Count == laneIndex).ToList();
+                var laneGaps = groups.Where((_, groupIndex) => groupIndex % sessions.Count == laneIndex)
+                    .SelectMany(group => group)
+                    .ToList();
                 var laneWorktreeSolutionPath = Path.Combine(session.WorktreePath, solutionRelativePath);
                 return ProcessLaneAsync(session, laneGaps, laneWorktreeSolutionPath, ct);
             });
