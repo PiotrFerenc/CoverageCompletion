@@ -73,6 +73,8 @@ public sealed class BuildTestRunnerTests : IDisposable
             }
             """);
 
+        (await _sut.BuildAsync(_dir, CancellationToken.None)).Success.ShouldBeTrue();
+
         var result = await _sut.RunTestsAsync(_dir, "FullyQualifiedName~CalculatorTests", CancellationToken.None);
 
         result.Success.ShouldBeTrue();
